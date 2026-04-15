@@ -133,19 +133,58 @@ int lexemas(const char* filename, char lexemas[512][512]) {
     return count;
 }
 
-Token* obter_atomo(){
-    Token token;
+Token* obter_atomo(char *lexema){
+    static Token token;
+
     token.tipo = DESCONHECIDO;
-    strcpy(token.lexema, "");
+    strncpy(token.lexema, lexema, sizeof(token.lexema) - 1);
+    token.lexema[sizeof(token.lexema) - 1] = '\0';
     token.linha = linhaAtual;
 
+    if (isDigito(lexema[0])){
+        int pos = 1;
+        int valido = 1;
 
+        while(lexema[pos] != '\0'){
+            if(!isDigito(lexema[pos])){
+                valido = 0;
+                break;
+            }
+            pos++; 
+        }
 
-     // Classificar o lexema para determinar seu tipo
+        if (valido) {
+            token.tipo = NUMERO;
+        }
+    }
+
+    else if (strcmp(lexema, "if") == 0) token.tipo = T_IF;
+    else if (strcmp(lexema, "elif") == 0) token.tipo = T_ELIF;
+    else if (strcmp(lexema, "else") == 0) token.tipo = T_ELSE;
+    else if (strcmp(lexema, "while") == 0) token.tipo = T_WHILE;
+    else if (strcmp(lexema, "for") == 0) token.tipo = T_FOR;
+    else if (strcmp(lexema, "def") == 0) token.tipo = T_DEF;
+    else if (strcmp(lexema, "return") == 0) token.tipo = T_RETURN;
+    else if (strcmp(lexema, "break") == 0) token.tipo = T_BREAK;
+    else if (strcmp(lexema, "continue") == 0) token.tipo = T_CONTINUE;
+    else if (strcmp(lexema, "print") == 0) token.tipo = T_PRINT;
+    else if (strcmp(lexema, "input") == 0) token.tipo = T_INPUT;
+    else if (strcmp(lexema, "len") == 0) token.tipo = T_LEN;
+    else if (strcmp(lexema, "range") == 0) token.tipo = T_RANGE;
+    else if (strcmp(lexema, "True") == 0) token.tipo = T_TRUE;
+    else if (strcmp(lexema, "False") == 0) token.tipo = T_FALSE;
+    else if (strcmp(lexema, "as") == 0 || strcmp(lexema, "from") == 0 ||
+        strcmp(lexema, "with") == 0 || strcmp(lexema, "exec") == 0 ||
+        strcmp(lexema, "raise") == 0 || strcmp(lexema, "and") == 0 ||
+        strcmp(lexema, "or") == 0 || strcmp(lexema, "not") == 0 ||
+        strcmp(lexema, "in") == 0 || strcmp(lexema, "is") == 0) {
+        token.tipo = KEYWORD;
+    }
+    else token.tipo = IDENTIFICADOR;
+
 
     return &token;
 }
-
 
 void arrayPrinter(char lexemas[512][512], int count) {
     printf("Lexemas encontrados:\n");
@@ -163,12 +202,14 @@ void START(){
 }
 
 void analizadorSintatico() {
-
+    
     // funcao para analisar a sintaxe dos lexemas
     // esta funcao ainda nao foi implementada, mas sera responsavel por verificar
     // se os lexemas formam uma estrutura sintatica valida de acordo com as regras
     // da linguagem de programacao que estamos compilando
 }
+
+
 
 int main(int argc, char **argv) {
 
@@ -200,5 +241,7 @@ int main(int argc, char **argv) {
     if (count >= 0) {
         arrayPrinter(lexemasArray, count);
     }
+
+    
     return 0;
 }
