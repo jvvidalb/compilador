@@ -739,6 +739,7 @@ void TERM() {
     } else if (lookahead.tipo == T_INPUT) {
         consome(T_INPUT);
         consome(DELIMITER); 
+        consome(LITERAL);
         consome(DELIMITER);
     } else {
         erroSintatico(IDENTIFICADOR);
