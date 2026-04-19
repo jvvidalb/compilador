@@ -8,11 +8,11 @@ O projeto consiste nas duas primeiras fases de um compilador para uma
 linguagem baseada em Python (Mini-Python), desenvolvidas em C puro:
 
 * Analisador Léxico:
-  - Leitura do arquivo fonte caractere a caractere.
+  - Carregamento do arquivo em memória, em um array baseado nos espaços.
   - Reconhecimento e classificação de tokens usando lógica de autômatos
     finitos (sem uso de bibliotecas de regex externas).
   - Suporte a tokens: ID, NUMERO_INTEIRO, LITERAL (strings), KEYWORD,
-    OP_RELACIONAL, OP_ARITMETICO, DELIMITER, COMMENT e NEWLINE.
+    OP_RELACIONAL, OP_ARITMETICO, DELIMITER..
   - Preenchimento de uma Tabela de Símbolos para identificadores, 
     números, literais e operadores.
   - Tratamento e reporte de erros léxicos (ex: caracteres não separados).
@@ -41,10 +41,9 @@ Sintática e a Tabela de Símbolos final (case não haja erro)
 
 3. DECISÕES DE DESIGN E IMPLEMENTAÇÃO
 --------------------------------------------------------------------
-* Bufferização de Tokens: Em vez de acoplar estritamente o léxico ao 
-  sintático solicitando um token por vez sob demanda, optou-se por 
-  coletar todos os tokens válidos em um `bufferTokens` na função main. 
-  Isso facilita a gerência do lookahead e a separação de responsabilidades.
+* Coleta de tokens sob demanda: o analisador sintático chama o analisador léxico
+  conforme consome tokens durante a análise sintática. ISSO NAO IMPACTA PERFORMANCE,
+  pois os lexemas são todos carregados em memória ao início da execução.
 
 * Divisão de Palavras-chave na Gramática: Para acomodar as diversas 
   palavras-chave da linguagem, elas foram divididas sintaticamente em 
@@ -56,5 +55,9 @@ Sintática e a Tabela de Símbolos final (case não haja erro)
 
 4. BUGS, ERROS CONHECIDOS E LIMITAÇÕES
 --------------------------------------------------------------------
-Ao longo da implementação, diversos bugs foram encontrados e corrigidos, mas no estado atual,
-os analisadores aparentam corretamente definer a linguagem nas limitações que ela possui.
+Após avaliação inicial pela professora, o código falhou diversos testes, entre eles:
+  - input(), com argumento (literal). 
+  - print() com tupla de argumentos: o print deve aceitar um literal, seguido e uma
+  tupla de argumentos para indicar variáveis.
+  - Tabela de símbolos tem apenas identificadores. Agora a tabela possui literais, 
+  numeros e identificadores.
