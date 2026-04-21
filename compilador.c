@@ -1,4 +1,9 @@
 /*
+DESENVOLVIDO POR:
+- Henrique Brainer Costa 10420717
+- João Pedro Queiroz de Andrade 10425822
+- João Victor Vidal Barbosa 10410165
+
 COMPILADORES
 
 Usando o padrão POSIX para reconhecimento de REGEX
@@ -435,13 +440,13 @@ char* obterNomeOperadorDelimitador(char *op) {
     else if (strcmp(op, "==") == 0) strcpy(nome, "EQ");
     else if (strcmp(op, "!=") == 0) strcpy(nome, "NE");
     else if (strcmp(op, "<>") == 0) strcpy(nome, "NE");
-    else if (strcmp(op, "+") == 0) strcpy(nome, "SOMA");
-    else if (strcmp(op, "-") == 0) strcpy(nome, "SUBTRACAO");
-    else if (strcmp(op, "*") == 0) strcpy(nome, "MULTIPLICACAO");
-    else if (strcmp(op, "**") == 0) strcpy(nome, "POTENCIA");
-    else if (strcmp(op, "/") == 0) strcpy(nome, "DIVISAO");
-    else if (strcmp(op, "%") == 0) strcpy(nome, "MODULO");
-    else if (strcmp(op, "~") == 0) strcpy(nome, "NEGACAO");
+    else if (strcmp(op, "+") == 0) strcpy(nome, "SUM");
+    else if (strcmp(op, "-") == 0) strcpy(nome, "SUBTRACTION");
+    else if (strcmp(op, "*") == 0) strcpy(nome, "MULTIPLICATION");
+    else if (strcmp(op, "**") == 0) strcpy(nome, "POWER");
+    else if (strcmp(op, "/") == 0) strcpy(nome, "DIVISION");
+    else if (strcmp(op, "%") == 0) strcpy(nome, "MODULUS");
+    else if (strcmp(op, "~") == 0) strcpy(nome, "NOT");
     else if (strcmp(op, "(") == 0) strcpy(nome, "LPAREN");
     else if (strcmp(op, ")") == 0) strcpy(nome, "RPAREN");
     else if (strcmp(op, "[") == 0) strcpy(nome, "LBRACKET");
@@ -556,7 +561,7 @@ void consome(TAtomo tipo_esperado, const char *lexema_esperado) {
 
 
 
-// Auxiliares Preditivas (FIRST)
+// FIRST(STATEMENT)
 int in_F_STMT() {
     return (lookahead.tipo == T_IF || lookahead.tipo == T_WHILE || lookahead.tipo == T_FOR || 
             lookahead.tipo == T_PRINT || lookahead.tipo == T_BREAK || lookahead.tipo == T_CONTINUE || 
@@ -565,6 +570,7 @@ int in_F_STMT() {
             (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0));
 }
 
+// FIRST(TERM)
 int in_F_TERM() {
     return (lookahead.tipo == IDENTIFICADOR || lookahead.tipo == NUMERO || lookahead.tipo == LITERAL ||
             lookahead.tipo == T_TRUE || lookahead.tipo == T_FALSE || 

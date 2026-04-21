@@ -59,5 +59,5 @@ Após avaliação inicial pela professora, o código falhou diversos testes, ent
   - input(), com argumento (literal). 
   - print() com tupla de argumentos: o print deve aceitar um literal, seguido e uma
   tupla de argumentos para indicar variáveis.
-  - Tabela de símbolos tem apenas identificadores. Agora a tabela possui literais, 
+  - Tabela de símbolos mostrava apenas identificadores. Agora a tabela possui literais, 
   numeros e identificadores.
