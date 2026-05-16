@@ -237,9 +237,6 @@ typedef enum
 {
     INTEIRO,
     BOOLEANO,
-    LISTA_INTEIROS,
-    LISTA_BOOLEANOS,
-    VARIAVEL,
     UNKNOWN,
     NAO_DEFINIDO
 } TipoDado;
@@ -699,8 +696,6 @@ char *tipoDadoParaString(TipoDado tipo)
 {
     switch (tipo)
     {
-    case VARIAVEL:
-        return "VARIAVEL";
     case NAO_DEFINIDO:
         return "NAO_DEFINIDO";
     case INTEIRO:
