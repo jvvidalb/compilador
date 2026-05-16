@@ -1,11 +1,26 @@
-input ( " ola " )
-# Todos os lexemas DEVEM ser separados por espaço
-vetorList = [ 2 , 3 , 5 , 7 , 11 ]
-i = 0
-# Teste de comentario
+x = True
+z = False
+a = 10 + 5 + 4126 * 15 / 2 - ( 50 - 25 ) * 50
+b = a + 300 * 5
+g = 5
 
-a = " sucooooo "
-a + 1
+if a >= b :
+    print ( " " )
 
-while i < len ( vetorList ) :
-    print ( vetorList [ i ] )
+if a == b :
+    print ( " " )
+
+if a <= b :
+    print ( " " )
+
+if a < b :
+    print ( " " )
+
+if a > b :
+    print ( " " )
+
+if x == z :
+    print ( " " )
+
+if x != z :
+    print ( " " )

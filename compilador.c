@@ -326,7 +326,7 @@ typedef struct _TNo
     char cadeia[100]; // id
     TAtomo atomo;
     TipoDado tipo;
-    char valor[17];
+    int usado;
     int endereco;
     struct _TNo *prox;
 } TNo;
@@ -353,6 +353,7 @@ int tagLine = 1;
 int totalLexemasGlob = 0;
 int mapaLinhasGlobais[512]; // Adicione esta linha
 TipoDado tipoUltimaExpressao = UNKNOWN;
+int end = 0;
 
 // FUNCOES AUXILIARES
 int isLetra(char c)
@@ -561,7 +562,6 @@ Token *obter_atomo(char *lexema)
     if (lexema[0] == '"')
     {
         token.tipo = LITERAL;
-        adicionarSimbolo(lexema, LITERAL);
         return &token;
     }
 
@@ -877,7 +877,7 @@ void printTabelaSimbolos()
 
     while (atual != NULL)
     {
-        printf("%d: %s | %s | %s\n", i, atual->cadeia, atomoParaString(atual->atomo), tipoDadoParaString(atual->tipo));
+        printf("%d: %s | %s | %s | %d | %d \n", i, atual->cadeia, atomoParaString(atual->atomo), tipoDadoParaString(atual->tipo), atual->usado, atual->endereco);
         atual = atual->prox;
         i++;
     }
@@ -926,18 +926,27 @@ Token analisadorLexico()
 
 void analisadorSemantico()
 {
-    int ladoDireito = 0;
     tipoUltimaExpressao = UNKNOWN;
+
+    if (buscarNaFila(&filaSemantica, "input") != NULL)
+    {
+        while (!filaVazia(&filaSemantica)) desenfileirar(&filaSemantica);
+        return;
+    }
+
+    int temAtribuicao = buscarNaFila(&filaSemantica, "=") != NULL ? 1 : 0;
+   
+    int ladoDireito = !temAtribuicao ? 1 : 0;
 
     while (!filaVazia(&filaSemantica))
     {
         Token tokenConsumido = desenfileirar(&filaSemantica);
-        
+
         if (tokenConsumido.tipo == NUMERO)
         {
             TNo *no = encontrarSimbolo(tokenConsumido.lexema);
-            if (no != NULL)
-                no->tipo = INTEIRO;
+            if (no != NULL && no->tipo == UNKNOWN)
+                no->tipo = INTEIRO;  // só tipifica, sem endereçar
             tipoUltimaExpressao = INTEIRO;
         }
         else if (tokenConsumido.tipo == T_TRUE || tokenConsumido.tipo == T_FALSE)
@@ -949,53 +958,46 @@ void analisadorSemantico()
             TNo *no = encontrarSimbolo(tokenConsumido.lexema);
             if (no == NULL)
             {
-                printTabelaSimbolos();
-                printf("[ERRO SEMANTICO] Variavel '%s' nao encontrada\n", tokenConsumido.lexema);
+                printf("[ERRO SEMANTICO - LINHA %d] Variavel '%s' nao encontrada.\n", tokenConsumido.linha, tokenConsumido.lexema);
                 exit(1);
             }
 
             if (!ladoDireito)
             {
-                // lado esquerdo
+                // lado esquerdo: primeira declaração recebe o endereço
                 if (no->tipo == UNKNOWN)
                 {
-                    no->tipo = NAO_DEFINIDO; // aguarda tipo do lado direito
-                    flag = no;
+                    no->tipo = NAO_DEFINIDO;
+                    no->endereco = end++;
                 }
-                else
-                {
-                    // x já tem tipo, guarda pra verificar compatibilidade depois
-                    flag = no;
-                }
+                flag = no;
             }
             else
             {
-                // lado direito
                 if (no->tipo == UNKNOWN || no->tipo == NAO_DEFINIDO)
                 {
-                    printTabelaSimbolos();
-                    printf("[ERRO SEMANTICO] Variavel '%s' usada antes de ser definida na linha %d\n",
-                           no->cadeia, tokenConsumido.linha);
+                    printf("[ERRO SEMANTICO - LINHA %d] Variavel '%s' usada antes de ser definida.\n",
+                           tokenConsumido.linha, no->cadeia);
                     exit(1);
                 }
-                // verifica compatibilidade com o que já foi visto no lado direito
                 if (tipoUltimaExpressao != UNKNOWN && tipoUltimaExpressao != no->tipo)
                 {
-                    printTabelaSimbolos();
-                    printf("[ERRO SEMANTICO] Tipo incompativel: '%s' eh %s, esperava %s\n",
-                           no->cadeia, tipoDadoParaString(no->tipo), tipoDadoParaString(tipoUltimaExpressao));
+                    printf("[ERRO SEMANTICO - LINHA %d] Tipo incompativel: '%s' eh %s, esperava %s.\n",
+                           tokenConsumido.linha, no->cadeia,
+                           tipoDadoParaString(no->tipo),
+                           tipoDadoParaString(tipoUltimaExpressao));
                     exit(1);
                 }
                 tipoUltimaExpressao = no->tipo;
+                no->usado = 1;
             }
         }
         else if (tokenConsumido.tipo == OP_ARITMETICO)
         {
             if (tipoUltimaExpressao != INTEIRO)
             {
-                printTabelaSimbolos();
-                printf("[ERRO SEMANTICO] Operacao aritmetica exige INTEIRO, encontrou %s\n",
-                       tipoDadoParaString(tipoUltimaExpressao));
+                printf("[ERRO SEMANTICO - LINHA %d] Operacao aritmetica requer INTEIRO, encontrou %s.\n",
+                       tokenConsumido.linha, tipoDadoParaString(tipoUltimaExpressao));
                 exit(1);
             }
         }
@@ -1003,40 +1005,38 @@ void analisadorSemantico()
         {
             if (tipoUltimaExpressao == UNKNOWN)
             {
-                printTabelaSimbolos();
-                printf("[ERRO SEMANTICO] Operacao relacional sem operando definido\n");
+                printf("[ERRO SEMANTICO - LINHA %d] Operacao relacional sem operando definido.\n", tokenConsumido.linha);
                 exit(1);
             }
-            tipoUltimaExpressao = BOOLEANO;
+            tipoUltimaExpressao = UNKNOWN;
         }
         else if (tokenConsumido.tipo == ATRIBUICAO)
         {
-            ladoDireito = 1; // a partir daqui, próximos tokens são lado direito
+            ladoDireito = 1;
         }
-        else if (tokenConsumido.tipo == T_IF ||
+        else if (tokenConsumido.tipo == T_IF   ||
                  tokenConsumido.tipo == T_WHILE ||
                  tokenConsumido.tipo == T_FOR)
         {
-            // condição: resultado tem que ser BOOLEANO
-            ladoDireito = 1; // tudo que vem é lado direito (a condição)
+            ladoDireito = 1;
         }
     }
 
-    // fim da linha: resolve a atribuição
     if (flag != NULL)
     {
         if (tipoUltimaExpressao == UNKNOWN)
         {
-            printf("[ERRO SEMANTICO] Lado direito sem tipo definido\n");
+            printf("[ERRO SEMANTICO] Lado direito da atribuicao sem tipo definido.\n");
             exit(1);
         }
-        // x = x + 5: flag já tinha tipo, verifica compatibilidade
         if (flag->tipo != NAO_DEFINIDO && flag->tipo != tipoUltimaExpressao)
         {
-            printf("[ERRO SEMANTICO] Atribuicao incompativel: '%s' eh %s mas lado direito eh %s\n", flag->cadeia, tipoDadoParaString(flag->tipo), tipoDadoParaString(tipoUltimaExpressao));
+            printf("[ERRO SEMANTICO] Atribuicao incompativel: '%s' eh %s mas lado direito eh %s.\n",
+                   flag->cadeia,
+                   tipoDadoParaString(flag->tipo),
+                   tipoDadoParaString(tipoUltimaExpressao));
             exit(1);
         }
-        // define o tipo do lado esquerdo
         flag->tipo = tipoUltimaExpressao;
         flag = NULL;
     }
@@ -1137,7 +1137,7 @@ flag->tipo = BOOLEANO;
 void consome(TAtomo tipo_esperado, const char *lexema_esperado)
 {
 
-    printToken(&lookahead); // Imprime o token atual antes de consumir
+    if (lookahead.tipo != EOS) printToken(&lookahead); // Imprime o token atual antes de consumir
     if (lookahead.tipo == tipo_esperado)
     {
         // Se lexema_esperado não for NULL, precisamos garantir que a string exata bate
