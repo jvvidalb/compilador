@@ -10,13 +10,13 @@ Usando o padrão POSIX para reconhecimento de REGEX
 
 Expressões Regulares:
 IDENTIFIER: [a-zA-Z_][a-zA-Z0-9_]*
-LITERAL: "[^"]*" 
+LITERAL: "[^"]*"
 KEYWORD: return|from|while|as|elif|with|else|if|break|len|input|print|exec|raise|continue|range|def|for|True|False
 OPERATOR: \*\*|!=|<>|==|<=|>=|\+|-|~|\*|\/|%|and|or|not|in|is|<|>
-DELIMITER: \(|\)|\[|\]|\{|\}|,|:|\.|=|; 
+DELIMITER: \(|\)|\[|\]|\{|\}|,|:|\.|=|;
 NUMBER -> [0-9]+
 
-**O automato finito responsavel por ler essa linguagem está incluso no arquivo 
+**O automato finito responsavel por ler essa linguagem está incluso no arquivo
 FinalSimplificado.jff -> Execute pelo JFlap**
 
 GRAMÁTICA LIVRE DE CONTEXTO
@@ -52,7 +52,7 @@ ELIF_STATEMENTS -> ELIF_STATEMENT ELIF_STATEMENTS_PRIME
 ELIF_STATEMENT -> elif EXPRESSION : STATEMENT
 ELIF_STATEMENTS_PRIME -> ELIF_STATEMENTS | ε
 
-WHILE_STATEMENT -> while EXPRESSION : STATEMENT 
+WHILE_STATEMENT -> while EXPRESSION : STATEMENT
 
 FOR_STATEMENT -> for IDENTIFIER in range ( EXPRESSION ) : STATEMENT
 
@@ -83,7 +83,7 @@ ELEMENTS_TAIL -> , EXPRESSION ELEMENTS_TAIL | ε
  * * * F_TERM (First de Termos):
  * { IDENTIFIER, NUMBER, LITERAL, TRUE, FALSE, '[', '(', len, input }
  * * * F_STMT (First de Statements - Inicio de Comandos):
- * { if, while, for, print, break, continue, return, exec, raise, input, 
+ * { if, while, for, print, break, continue, return, exec, raise, input,
  * IDENTIFIER, NUMBER, LITERAL, '(' }
  * * * FL_STMT (Follow de Statements - Fim de Comandos / Blocos):
  * F_STMT U { $, else, elif }
@@ -96,7 +96,7 @@ ELEMENTS_TAIL -> , EXPRESSION ELEMENTS_TAIL | ε
  * STATEMENTS_PRIME        | SIM   | F_STMT U { [EPSILON] }        | { $ }
  * STATEMENT               | NAO   | F_STMT                        | FL_STMT
  * ASSIGN_OR_EXPR          | NAO   | { IDENTIFIER, NUMBER,         | FL_STMT
- * |       |   LITERAL, '(' }              | 
+ * |       |   LITERAL, '(' }              |
  * ASSIGN_OR_EXPR_TAIL     | SIM   | { '=', OPERATOR, [EPSILON] }  | FL_STMT
  * IF_STATEMENT            | NAO   | { if }                        | FL_STMT
  * IF_START                | NAO   | { if }                        | FL_STMT
@@ -108,7 +108,7 @@ ELEMENTS_TAIL -> , EXPRESSION ELEMENTS_TAIL | ε
  * WHILE_STATEMENT         | NAO   | { while }                     | FL_STMT
  * FOR_STATEMENT           | NAO   | { for }                       | FL_STMT
  * COMMAND_STATEMENT       | NAO   | { print, break, continue,     | FL_STMT
- * |       |   return, exec, raise, input} | 
+ * |       |   return, exec, raise, input} |
  * EXPRESSION              | NAO   | F_TERM                        | FL_STMT U { ':', ')', ']', ',' }
  * EXPRESSION_PRIME        | SIM   | { OPERATOR, [EPSILON] }       | FL_STMT U { ':', ')', ']', ',' }
  * INDEX_OPT               | SIM   | { '[', [EPSILON] }            | FL_STMT U { '=', ':', ')', ']', ',', OPERATOR }
@@ -120,13 +120,86 @@ ELEMENTS_TAIL -> , EXPRESSION ELEMENTS_TAIL | ε
  * ==============================================================================
  */
 
+/*
+ *==============================================================================
+ * GRAMATICA ESTENDIDA (deu errado, god save me!!!!)
+ * ==============================================================================
+ *
+ * ASSIGN_OR_EXPR.TYPEDATA = IDENTIFICADOR.TYPEDATA INDEX_OPT.TYPEDATA ASSIGN_OR_EXPR_TAIL.TYPEDATA
+ * ASSIGN_OR_EXPR.INTEIRO = NUMERO.INTEIRO EXPRESSION_PRIME.INTEIRO
+ * ASSIGN_OR_EXPR.TYPEDATA = ( EXPRESSION.TYPEDATA ) EXPRESSION_PRIME.TYPEDATA
+ *
+ * INDEX_OPT.TYPEDATA = [ EXPRESSION.TYPEDATA ] INDEX_OPT.TYPEDATA
+ *
+ * ASSIGN_OR_EXPR_TAIL.TYPEDATA = EXPRESSION.TYPEDATA
+ *
+ * EXPRESSION.TYPEDATA = TERM.TYPEDATA EXPRESSION_PRIME.TYPEDATA
+ *
+ * EXPRESSION_PRIME.TYPEDATA  = OPERATOR.TYPEDATA TERM.TYPEDATA EXPRESSION_PRIME.TYPEDATA
+ *
+ * TERM.TYPEDATA = IDENTIFICADOR.TYPEDATA INDEX_OPT.TYPEDATA
+ * TERM.INTEIRO = NUMERO.INTEIRO
+ * TERM.BOOLEANO = TRUE.BOOLEANO
+ * TERM.BOOLEANO = FALSE.BOOLEANO
+ * TERM.TYPEDATA = LIST.TYPEDATA
+ * TERM.TYPEDATA = TUPLE_OR_GROUP.TYPEDATA
+ * LIST.TYPEDATA =  ELEMENTS_OPT.TYPEDATA
+ * TUPLE_OR_GROUP.TYPEDATA = ELEMENTS_OPT.TYPEDATA
+ * ELEMENTS_OPT.TYPEDATA = EXPRESSION.TYPEDATA ELEMENTS_TAIL.TYPEDATA
+ * ELEMENTS_TAIL.TYPEDATA = EXPRESSION.TYPEDATA ELEMENTS_TAIL.TYPEDATA
+ */
+
+/*
+ * ANÁLISE SEMÂNTICA
+ *
+ * Utilizamos uma FILA para fazer a análise semântica
+ * Os tokens de cada linha são enfileirados durante a análise sintática
+ * e processados em ordem (esquerda para direita) pelo analisador semântico
+ * ao fim de cada linha ou ao encontrar EOS
+ * Assim garantimos que analise sintatica termina e verifica a sintaxe
+ * chamamos o Semantico para avaliar o significado desse trecho
+ *
+ *
+ * TIPOS:
+ * - Inicialmente todos os símbolos são UNKNOWN, pois a linguagem não é tipada.
+ * - Ao ser declarada (lado esquerdo de uma atribuição), a variável passa para
+ *   NAO_DEFINIDO — foi iniciada, mas ainda não tem tipo.
+ * - O tipo é definido com base no lado direito da atribuição.
+ *
+ * FLAG:
+ * - A flag aponta para o nó da tabela de símbolos do lado esquerdo da atribuição.
+ * - Ao fim do processamento da linha, o tipo do lado direito é atribuído à flag.
+ *
+ * REGRAS:
+ * - Variável usada no lado direito com tipo UNKNOWN ou NAO_DEFINIDO → ERRO.
+ * - Operação aritmética com tipo diferente de INTEIRO → ERRO.
+ * - Tipos incompatíveis na mesma expressão → ERRO.
+ * - Atribuição com tipos incompatíveis (ex: variável já era INTEIRO, lado direito é BOOLEANO) → ERRO.
+ *
+ * EXEMPLO: x = 1 + b * 3
+ * Fila (ordem de processamento): x → = → 1 → + → b → * → 3
+ *
+ * x   → UNKNOWN: vira NAO_DEFINIDO, flag = x
+ * =   → ladoDireito = 1
+ * 1   → INTEIRO, tipoUltimaExpressao = INTEIRO
+ * +   → tipoUltimaExpressao == INTEIRO? sim → operação válida
+ * b   → lado direito: b é NAO_DEFINIDO → ERRO: variável não definida
+ *
+ * EXEMPLO VÁLIDO: x = 1 + 3
+ * x   → NAO_DEFINIDO, flag = x
+ * =   → ladoDireito = 1
+ * 1   → tipoUltimaExpressao = INTEIRO
+ * +   → operação válida
+ * 3   → tipoUltimaExpressao = INTEIRO
+ * fim → flag->tipo = INTEIRO, flag = NULL
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-
 // Tipo atomo
-typedef enum {
+typedef enum
+{
     ERRO,
     IDENTIFICADOR,
     NUMERO,
@@ -137,24 +210,135 @@ typedef enum {
     OP_ARITMETICO,
     ATRIBUICAO,
     DELIMITER,
-    T_IF, T_ELIF, T_ELSE, T_WHILE, T_FOR, T_DEF,
-    T_RETURN, T_BREAK, T_CONTINUE, T_PRINT, T_INPUT,
-    T_LEN, T_RANGE, T_TRUE, T_FALSE, T_WITH, T_AS,
-    T_FROM, T_EXEC, T_RAISE,
+    T_IF,
+    T_ELIF,
+    T_ELSE,
+    T_WHILE,
+    T_FOR,
+    T_DEF,
+    T_RETURN,
+    T_BREAK,
+    T_CONTINUE,
+    T_PRINT,
+    T_INPUT,
+    T_LEN,
+    T_RANGE,
+    T_TRUE,
+    T_FALSE,
+    T_WITH,
+    T_AS,
+    T_FROM,
+    T_EXEC,
+    T_RAISE,
     DESCONHECIDO
 } TAtomo;
 
+typedef enum
+{
+    INTEIRO,
+    BOOLEANO,
+    LISTA_INTEIROS,
+    LISTA_BOOLEANOS,
+    VARIAVEL,
+    UNKNOWN,
+    NAO_DEFINIDO
+} TipoDado;
+
 // Token
-typedef struct {
+typedef struct
+{
     char lexema[100];
     TAtomo tipo;
     int linha;
 } Token;
+;
 
-// Tabela de símbolos
-typedef struct {
+typedef struct NodoFila
+{
+    Token token;
+    struct NodoFila *proximo;
+} NodoFila;
+
+typedef struct
+{
+    NodoFila *head;
+    NodoFila *tail;
+} FilaSemantica;
+
+// Funções auxiliares
+void enfileirar(FilaSemantica *fila, Token t)
+{
+    NodoFila *novo = (NodoFila *)malloc(sizeof(NodoFila));
+    novo->token = t;
+    novo->proximo = NULL;
+    if (fila->tail == NULL)
+    {
+        fila->head = fila->tail = novo;
+    }
+    else
+    {
+        fila->tail->proximo = novo;
+        fila->tail = novo;
+    }
+}
+
+Token desenfileirar(FilaSemantica *fila)
+{
+    if (fila->head == NULL)
+    {
+        printf("[ERRO] Fila vazia!\n");
+        exit(1);
+    }
+    NodoFila *aux = fila->head;
+    Token t = aux->token;
+    fila->head = aux->proximo;
+    if (fila->head == NULL)
+        fila->tail = NULL; // fila ficou vazia
+    free(aux);
+    return t;
+}
+
+NodoFila *buscarNaFila(FilaSemantica *fila, char *lexema)
+{
+    NodoFila *atual = fila->head;
+    while (atual != NULL)
+    {
+        if (strcmp(atual->token.lexema, lexema) == 0)
+        {
+            return atual;
+        }
+        atual = atual->proximo;
+    }
+
+    return NULL;
+}
+
+int filaVazia(FilaSemantica *fila)
+{
+    return fila->head == NULL;
+}
+
+// Old Tabela de símbolos
+/*typedef struct {
     char valor[100];
     TAtomo tipo;
+} SimboloTabela;*/
+
+typedef struct _TNo
+{
+    char cadeia[100]; // id
+    TAtomo atomo;
+    TipoDado tipo;
+    char valor[17];
+    int endereco;
+    struct _TNo *prox;
+} TNo;
+
+typedef struct
+{
+    TNo *head;
+    TNo *tail;
+    int totalSimbolos;
 } SimboloTabela;
 
 // VARS GLOBAIS
@@ -163,55 +347,68 @@ int posicaoAtual = 0;
 char lexemasArray[512][512];
 int linhaAtual = 1;
 Token lookahead;
-SimboloTabela tabelaSimbolos[1024];
-int totalSimbolos = 0;
+FilaSemantica filaSemantica = {NULL, NULL};
+// SimboloTabela tabelaSimbolos[1024];
+// int totalSimbolos = 0;
+SimboloTabela globalTabela = {NULL, NULL, 0};
+TNo *flag = {NULL}; // pega linha da tabela
+int tagLine = 1;
 int totalLexemasGlob = 0;
-char lexemasArray[512][512];
 int mapaLinhasGlobais[512]; // Adicione esta linha
+TipoDado tipoUltimaExpressao = UNKNOWN;
 
 // FUNCOES AUXILIARES
-int isLetra(char c) {
+int isLetra(char c)
+{
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
 
-int isDigito(char c) {
+int isDigito(char c)
+{
     return c >= '0' && c <= '9';
 }
 
-int isSeparadorValido(char c) {
+int isSeparadorValido(char c)
+{
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == EOF;
 }
 
 // funcao que pega o arquivo formatado e retorna uma array de lexemas
 // todos os lexemas obrigatoriamente sao separados por espaco, o leitor
-// apenas le os caracteres ate encontrar um espaco, e entao armazena o 
+// apenas le os caracteres ate encontrar um espaco, e entao armazena o
 // lexema em um array de strings
-int lexemas(const char* filename, char lexemas[512][512], int mapaLinhas[512]) {
-    FILE* file = fopen(filename, "r");
-    if (file == NULL) {
+int lexemas(const char *filename, char lexemas[512][512], int mapaLinhas[512])
+{
+    FILE *file = fopen(filename, "r");
+    if (file == NULL)
+    {
         printf("Erro ao abrir o arquivo.\n");
         return -1;
     }
-    
+
     char buffer[100];
     int count = 0;
     int in_string = 0;
     int c;
     int buf_idx = 0;
-    
+
     // Rastreadores de linha
     int linha_atual = 1;
     int linha_inicio_lexema = 1;
-    
-    while ((c = fgetc(file)) != EOF) {
+
+    while ((c = fgetc(file)) != EOF)
+    {
         // Atualiza a contagem global de linhas
-        if (c == '\n') {
+        if (c == '\n')
+        {
             linha_atual++;
         }
 
         // Ignora comentários e avança até o fim da linha
-        if (!in_string && c == '#') {
-            if (buf_idx > 0) {
+        if (!in_string && c == '#')
+        {
+            if (buf_idx > 0)
+            {
                 buffer[buf_idx] = '\0';
                 strcpy(lexemas[count], buffer);
                 mapaLinhas[count] = linha_inicio_lexema; // Salva a linha do lexema
@@ -219,32 +416,39 @@ int lexemas(const char* filename, char lexemas[512][512], int mapaLinhas[512]) {
                 buf_idx = 0;
             }
             // Pula os caracteres até achar a quebra de linha ou o fim do arquivo
-            while ((c = fgetc(file)) != EOF) {
-                if (c == '\n') {
+            while ((c = fgetc(file)) != EOF)
+            {
+                if (c == '\n')
+                {
                     linha_atual++;
                     break;
                 }
             }
             continue;
         }
-        
+
         // Se estamos começando a ler um novo lexema, registramos em qual linha ele começou
-        if (buf_idx == 0 && c != ' ' && c != '\t' && c != '\n' && c != '\r') {
+        if (buf_idx == 0 && c != ' ' && c != '\t' && c != '\n' && c != '\r')
+        {
             linha_inicio_lexema = linha_atual;
         }
 
         // Trata strings literais
-        if (c == '"') {
+        if (c == '"')
+        {
             in_string = !in_string;
             buffer[buf_idx++] = (char)c;
             continue;
         }
-        
+
         // Trata espaços em branco fora de strings (separadores)
-        if (!in_string && (c == ' ' || c == '\t' || c == '\n' || c == '\r')) {
-            if (buf_idx > 0) {
+        if (!in_string && (c == ' ' || c == '\t' || c == '\n' || c == '\r'))
+        {
+            if (buf_idx > 0)
+            {
                 buffer[buf_idx] = '\0';
-                if (count < 512) {
+                if (count < 512)
+                {
                     strcpy(lexemas[count], buffer);
                     mapaLinhas[count] = linha_inicio_lexema; // Salva a linha
                     count++;
@@ -253,26 +457,72 @@ int lexemas(const char* filename, char lexemas[512][512], int mapaLinhas[512]) {
             }
             continue;
         }
-        
+
         // Acumula o caractere no buffer do lexema atual
         buffer[buf_idx++] = (char)c;
     }
-    
+
     // Captura o último lexema caso o arquivo termine sem uma quebra de linha no final
-    if (buf_idx > 0 && count < 512) {
+    if (buf_idx > 0 && count < 512)
+    {
         buffer[buf_idx] = '\0';
         strcpy(lexemas[count], buffer);
         mapaLinhas[count] = linha_inicio_lexema;
         count++;
     }
-    
+
     fclose(file);
     return count;
 }
 
-
 // Função para adicionar à tabela de símbolos (evita duplicatas)
-void adicionarSimbolo(char *lexema, TAtomo tipo) {
+void adicionarSimbolo(char *lexema, TAtomo tipo)
+{
+    TNo *atual = globalTabela.head;
+
+    // Verifica se já existe
+    while (atual != NULL)
+    {
+        if (strcmp(atual->cadeia, lexema) == 0)
+        {
+            return;
+        }
+        atual = atual->prox;
+    }
+
+    // Cria novo nó
+    TNo *novo = (TNo *)malloc(sizeof(TNo));
+
+    if (novo == NULL)
+    {
+        printf("Erro de alocacao.\n");
+        return;
+    }
+
+    // Preenche os dados
+    strncpy(novo->cadeia, lexema, sizeof(novo->cadeia) - 1);
+    novo->cadeia[sizeof(novo->cadeia) - 1] = '\0';
+
+    novo->atomo = tipo;
+    novo->tipo = UNKNOWN;
+    globalTabela.totalSimbolos++;
+
+    novo->prox = NULL;
+    if (globalTabela.head == NULL)
+    {
+        // Se a lista está vazia, novo é o head e o tail
+        globalTabela.head = novo;
+        globalTabela.tail = novo;
+    }
+    else
+    {
+        // Se não está vazia, o atual tail aponta para o novo
+        globalTabela.tail->prox = novo;
+        // E o novo vira o novo tail
+        globalTabela.tail = novo;
+    }
+
+    /*
     for (int i = 0; i < totalSimbolos; i++) {
         if (strcmp(tabelaSimbolos[i].valor, lexema) == 0) return;
     }
@@ -280,300 +530,704 @@ void adicionarSimbolo(char *lexema, TAtomo tipo) {
         strncpy(tabelaSimbolos[totalSimbolos].valor, lexema, 99);
         tabelaSimbolos[totalSimbolos].tipo = tipo;
         totalSimbolos++;
-    }
+    }*/
 }
 
-int encontrarSimbolo(char *lexema) {
-    for (int i = 0; i < totalSimbolos; i++) {
+TNo *encontrarSimbolo(char *lexema)
+{
+    TNo *atual = globalTabela.head;
+    while (atual != NULL)
+    {
+        if (strcmp(atual->cadeia, lexema) == 0)
+        {
+            return atual;
+        }
+        atual = atual->prox;
+    }
+    return NULL;
+
+    /*for (int i = 0; i < totalSimbolos; i++) {
         if (strcmp(tabelaSimbolos[i].valor, lexema) == 0) return i;
     }
-    return -1;
+    return -1;*/
 }
 
-Token* obter_atomo(char *lexema) {
+Token *obter_atomo(char *lexema)
+{
+
     static Token token;
     token.tipo = DESCONHECIDO;
     strncpy(token.lexema, lexema, sizeof(token.lexema) - 1);
     token.linha = linhaAtual;
 
     // 1. LITERAL (Strings entre aspas)
-    if (lexema[0] == '"') {
+    if (lexema[0] == '"')
+    {
         token.tipo = LITERAL;
         adicionarSimbolo(lexema, LITERAL);
         return &token;
     }
 
     // 2. NUMBER (Apenas dígitos)
-    if (isDigito(lexema[0])) {
+    if (isDigito(lexema[0]))
+    {
         int eh_numero_valido = 1;
-        
+
         // Verifica do segundo caractere em diante
-        for (int i = 1; lexema[i] != '\0'; i++) {
-            if (!isDigito(lexema[i])) {
+        for (int i = 1; lexema[i] != '\0'; i++)
+        {
+            if (!isDigito(lexema[i]))
+            {
                 eh_numero_valido = 0;
-                break; 
+                break;
             }
         }
-        
-        if (eh_numero_valido) {
+
+        if (eh_numero_valido)
+        {
             token.tipo = NUMERO;
             adicionarSimbolo(lexema, NUMERO);
-        } else {
-            token.tipo = DESCONHECIDO; 
         }
-        
+        else
+        {
+            token.tipo = DESCONHECIDO;
+        }
+
         return &token;
     }
 
     // 3. KEYWORDS
-    if (strcmp(lexema, "return") == 0) token.tipo = T_RETURN;
-    else if (strcmp(lexema, "from") == 0) token.tipo = T_FROM;
-    else if (strcmp(lexema, "while") == 0) token.tipo = T_WHILE;
-    else if (strcmp(lexema, "as") == 0) token.tipo = T_AS;
-    else if (strcmp(lexema, "elif") == 0) token.tipo = T_ELIF;
-    else if (strcmp(lexema, "with") == 0) token.tipo = T_WITH;
-    else if (strcmp(lexema, "else") == 0) token.tipo = T_ELSE;
-    else if (strcmp(lexema, "if") == 0) token.tipo = T_IF;
-    else if (strcmp(lexema, "break") == 0) token.tipo = T_BREAK;
-    else if (strcmp(lexema, "len") == 0) token.tipo = T_LEN;
-    else if (strcmp(lexema, "input") == 0) token.tipo = T_INPUT;
-    else if (strcmp(lexema, "print") == 0) token.tipo = T_PRINT;
-    else if (strcmp(lexema, "exec") == 0) token.tipo = T_EXEC;
-    else if (strcmp(lexema, "raise") == 0) token.tipo = T_RAISE;
-    else if (strcmp(lexema, "continue") == 0) token.tipo = T_CONTINUE;
-    else if (strcmp(lexema, "range") == 0) token.tipo = T_RANGE;
-    else if (strcmp(lexema, "def") == 0) token.tipo = T_DEF;
-    else if (strcmp(lexema, "for") == 0) token.tipo = T_FOR;
-    else if (strcmp(lexema, "True") == 0) token.tipo = T_TRUE;
-    else if (strcmp(lexema, "False") == 0) token.tipo = T_FALSE;
+    if (strcmp(lexema, "return") == 0)
+        token.tipo = T_RETURN;
+    else if (strcmp(lexema, "from") == 0)
+        token.tipo = T_FROM;
+    else if (strcmp(lexema, "while") == 0)
+        token.tipo = T_WHILE;
+    else if (strcmp(lexema, "as") == 0)
+        token.tipo = T_AS;
+    else if (strcmp(lexema, "elif") == 0)
+        token.tipo = T_ELIF;
+    else if (strcmp(lexema, "with") == 0)
+        token.tipo = T_WITH;
+    else if (strcmp(lexema, "else") == 0)
+        token.tipo = T_ELSE;
+    else if (strcmp(lexema, "if") == 0)
+        token.tipo = T_IF;
+    else if (strcmp(lexema, "break") == 0)
+        token.tipo = T_BREAK;
+    else if (strcmp(lexema, "len") == 0)
+        token.tipo = T_LEN;
+    else if (strcmp(lexema, "input") == 0)
+        token.tipo = T_INPUT;
+    else if (strcmp(lexema, "print") == 0)
+        token.tipo = T_PRINT;
+    else if (strcmp(lexema, "exec") == 0)
+        token.tipo = T_EXEC;
+    else if (strcmp(lexema, "raise") == 0)
+        token.tipo = T_RAISE;
+    else if (strcmp(lexema, "continue") == 0)
+        token.tipo = T_CONTINUE;
+    else if (strcmp(lexema, "range") == 0)
+        token.tipo = T_RANGE;
+    else if (strcmp(lexema, "def") == 0)
+        token.tipo = T_DEF;
+    else if (strcmp(lexema, "for") == 0)
+        token.tipo = T_FOR;
+    else if (strcmp(lexema, "True") == 0)
+        token.tipo = T_TRUE;
+    else if (strcmp(lexema, "False") == 0)
+        token.tipo = T_FALSE;
 
     // 4. OPERATORS (Aritméticos e Lógicos conforme o Regex)
-    else if (strcmp(lexema, "**") == 0 || strcmp(lexema, "+") == 0 || 
-             strcmp(lexema, "-") == 0 || strcmp(lexema, "*") == 0 || 
-             strcmp(lexema, "/") == 0 || strcmp(lexema, "%") == 0 || 
-             strcmp(lexema, "~") == 0) {
+    else if (strcmp(lexema, "**") == 0 || strcmp(lexema, "+") == 0 ||
+             strcmp(lexema, "-") == 0 || strcmp(lexema, "*") == 0 ||
+             strcmp(lexema, "/") == 0 || strcmp(lexema, "%") == 0 ||
+             strcmp(lexema, "~") == 0)
+    {
         token.tipo = OP_ARITMETICO;
     }
-    else if (strcmp(lexema, "==") == 0 || strcmp(lexema, "!=") == 0 || 
-             strcmp(lexema, "<>") == 0 || strcmp(lexema, "<=") == 0 || 
-             strcmp(lexema, ">=") == 0 || strcmp(lexema, "<") == 0 || 
-             strcmp(lexema, ">") == 0 || strcmp(lexema, "and") == 0 || 
-             strcmp(lexema, "or") == 0 || strcmp(lexema, "not") == 0 || 
-             strcmp(lexema, "in") == 0 || strcmp(lexema, "is") == 0) {
+    else if (strcmp(lexema, "==") == 0 || strcmp(lexema, "!=") == 0 ||
+             strcmp(lexema, "<>") == 0 || strcmp(lexema, "<=") == 0 ||
+             strcmp(lexema, ">=") == 0 || strcmp(lexema, "<") == 0 ||
+             strcmp(lexema, ">") == 0 || strcmp(lexema, "and") == 0 ||
+             strcmp(lexema, "or") == 0 || strcmp(lexema, "not") == 0 ||
+             strcmp(lexema, "in") == 0 || strcmp(lexema, "is") == 0)
+    {
         token.tipo = OP_RELACIONAL;
     }
 
     // 5. DELIMITERS
-    else if (strcmp(lexema, "=") == 0) token.tipo = ATRIBUICAO;
-    else if (strchr("()[]{,}:.;", lexema[0]) && strlen(lexema) == 1) {
+    else if (strcmp(lexema, "=") == 0)
+        token.tipo = ATRIBUICAO;
+    else if (strchr("()[]{,}:.;", lexema[0]) && strlen(lexema) == 1)
+    {
         token.tipo = DELIMITER;
     }
 
     // 6. IDENTIFIER (Se começar com letra/_ e não for Keyword)
-    else if (isLetra(lexema[0])) {
+    else if (isLetra(lexema[0]))
+    {
         int eh_identificador_valido = 1;
-        
+
         // Verifica do segundo caractere em diante
-        for (int i = 1; lexema[i] != '\0'; i++) {
+        for (int i = 1; lexema[i] != '\0'; i++)
+        {
             // Um identificador válido só pode conter letras, '_' (já coberto pelo isLetra) ou dígitos
-            if (!isLetra(lexema[i]) && !isDigito(lexema[i])) {
+            if (!isLetra(lexema[i]) && !isDigito(lexema[i]))
+            {
                 eh_identificador_valido = 0;
                 break; // Encontrou um intruso (ex: '$', '-'), para a verificação
             }
         }
-        
-        if (eh_identificador_valido) {
+
+        if (eh_identificador_valido)
+        {
             token.tipo = IDENTIFICADOR;
             adicionarSimbolo(lexema, IDENTIFICADOR);
-        } else {
+        }
+        else
+        {
             // Rejeita tokens malformados como "val$" ou "company-name"
-            token.tipo = DESCONHECIDO; 
-            
+            token.tipo = DESCONHECIDO;
         }
     }
 
     return &token;
 }
 
-char* atomoParaString(TAtomo tipo) {
-    switch (tipo) {
-        case ERRO: return "ERRO";
-        case IDENTIFICADOR: return "IDENTIFICADOR";
-        case NUMERO: return "NUMERO";
-        case LITERAL: return "LITERAL";
-        case EOS: return "EOS";
-        case COMMENT: return "COMMENT";
-        case OP_RELACIONAL: return "OP_RELACIONAL";
-        case OP_ARITMETICO: return "OP_ARITMETICO";
-        case ATRIBUICAO: return "ATRIBUICAO";
-        case DELIMITER: return "DELIMITER";
-        case T_IF: return "T_IF";
-        case T_ELIF: return "T_ELIF";
-        case T_ELSE: return "T_ELSE";
-        case T_WHILE: return "T_WHILE";
-        case T_FOR: return "T_FOR";
-        case T_DEF: return "T_DEF";
-        case T_RETURN: return "T_RETURN";
-        case T_BREAK: return "T_BREAK";
-        case T_CONTINUE: return "T_CONTINUE";
-        case T_PRINT: return "T_PRINT";
-        case T_INPUT: return "T_INPUT";
-        case T_LEN: return "T_LEN";
-        case T_RANGE: return "T_RANGE";
-        case T_TRUE: return "T_TRUE";
-        case T_FALSE: return "T_FALSE";
-        case T_WITH: return "T_WITH";
-        case T_AS: return "T_AS";
-        case T_FROM: return "T_FROM";
-        case T_EXEC: return "T_EXEC";
-        case T_RAISE: return "T_RAISE";
-        default: return "DESCONHECIDO";
+char *tipoDadoParaString(TipoDado tipo)
+{
+    switch (tipo)
+    {
+    case VARIAVEL:
+        return "VARIAVEL";
+    case NAO_DEFINIDO:
+        return "NAO_DEFINIDO";
+    case INTEIRO:
+        return "INTEIRO";
+    case BOOLEANO:
+        return "BOOLEANO";
+    default:
+        return "UNKNOWN";
     }
 }
 
-char* obterNomeOperadorDelimitador(char *op) {
+char *atomoParaString(TAtomo tipo)
+{
+    switch (tipo)
+    {
+    case ERRO:
+        return "ERRO";
+    case IDENTIFICADOR:
+        return "IDENTIFICADOR";
+    case NUMERO:
+        return "NUMERO";
+    case LITERAL:
+        return "LITERAL";
+    case EOS:
+        return "EOS";
+    case COMMENT:
+        return "COMMENT";
+    case OP_RELACIONAL:
+        return "OP_RELACIONAL";
+    case OP_ARITMETICO:
+        return "OP_ARITMETICO";
+    case ATRIBUICAO:
+        return "ATRIBUICAO";
+    case DELIMITER:
+        return "DELIMITER";
+    case T_IF:
+        return "T_IF";
+    case T_ELIF:
+        return "T_ELIF";
+    case T_ELSE:
+        return "T_ELSE";
+    case T_WHILE:
+        return "T_WHILE";
+    case T_FOR:
+        return "T_FOR";
+    case T_DEF:
+        return "T_DEF";
+    case T_RETURN:
+        return "T_RETURN";
+    case T_BREAK:
+        return "T_BREAK";
+    case T_CONTINUE:
+        return "T_CONTINUE";
+    case T_PRINT:
+        return "T_PRINT";
+    case T_INPUT:
+        return "T_INPUT";
+    case T_LEN:
+        return "T_LEN";
+    case T_RANGE:
+        return "T_RANGE";
+    case T_TRUE:
+        return "T_TRUE";
+    case T_FALSE:
+        return "T_FALSE";
+    case T_WITH:
+        return "T_WITH";
+    case T_AS:
+        return "T_AS";
+    case T_FROM:
+        return "T_FROM";
+    case T_EXEC:
+        return "T_EXEC";
+    case T_RAISE:
+        return "T_RAISE";
+    default:
+        return "DESCONHECIDO";
+    }
+}
+
+char *obterNomeOperadorDelimitador(char *op)
+{
     static char nome[20];
-    if (strcmp(op, ">") == 0) strcpy(nome, "GT");
-    else if (strcmp(op, "<") == 0) strcpy(nome, "LT");
-    else if (strcmp(op, ">=") == 0) strcpy(nome, "GE");
-    else if (strcmp(op, "<=") == 0) strcpy(nome, "LE");
-    else if (strcmp(op, "==") == 0) strcpy(nome, "EQ");
-    else if (strcmp(op, "!=") == 0) strcpy(nome, "NE");
-    else if (strcmp(op, "<>") == 0) strcpy(nome, "NE");
-    else if (strcmp(op, "+") == 0) strcpy(nome, "SUM");
-    else if (strcmp(op, "-") == 0) strcpy(nome, "SUBTRACTION");
-    else if (strcmp(op, "*") == 0) strcpy(nome, "MULTIPLICATION");
-    else if (strcmp(op, "**") == 0) strcpy(nome, "POWER");
-    else if (strcmp(op, "/") == 0) strcpy(nome, "DIVISION");
-    else if (strcmp(op, "%") == 0) strcpy(nome, "MODULUS");
-    else if (strcmp(op, "~") == 0) strcpy(nome, "NOT");
-    else if (strcmp(op, "(") == 0) strcpy(nome, "LPAREN");
-    else if (strcmp(op, ")") == 0) strcpy(nome, "RPAREN");
-    else if (strcmp(op, "[") == 0) strcpy(nome, "LBRACKET");
-    else if (strcmp(op, "]") == 0) strcpy(nome, "RBRACKET");
-    else if (strcmp(op, "{") == 0) strcpy(nome, "LBRACE");
-    else if (strcmp(op, "}") == 0) strcpy(nome, "RBRACE");
-    else if (strcmp(op, ",") == 0) strcpy(nome, "COMMA");
-    else if (strcmp(op, ":") == 0) strcpy(nome, "COLON");
-    else if (strcmp(op, ".") == 0) strcpy(nome, "DOT");
-    else if (strcmp(op, "=") == 0) strcpy(nome, "EQUALS");
-    else if (strcmp(op, ";") == 0) strcpy(nome, "SEMICOLON");
-    else if (strcmp(op, "in") == 0) strcpy(nome, "IN");
-    else if (strcmp(op, "is") == 0) strcpy(nome, "IS");
-    else if (strcmp(op, "and") == 0) strcpy(nome, "AND");
-    else if (strcmp(op, "or") == 0) strcpy(nome, "OR");
-    else if (strcmp(op, "not") == 0) strcpy(nome, "NOT");
-    else strcpy(nome, "DESCONHECIDO");
+    if (strcmp(op, ">") == 0)
+        strcpy(nome, "GT");
+    else if (strcmp(op, "<") == 0)
+        strcpy(nome, "LT");
+    else if (strcmp(op, ">=") == 0)
+        strcpy(nome, "GE");
+    else if (strcmp(op, "<=") == 0)
+        strcpy(nome, "LE");
+    else if (strcmp(op, "==") == 0)
+        strcpy(nome, "EQ");
+    else if (strcmp(op, "!=") == 0)
+        strcpy(nome, "NE");
+    else if (strcmp(op, "<>") == 0)
+        strcpy(nome, "NE");
+    else if (strcmp(op, "+") == 0)
+        strcpy(nome, "SUM");
+    else if (strcmp(op, "-") == 0)
+        strcpy(nome, "SUBTRACTION");
+    else if (strcmp(op, "*") == 0)
+        strcpy(nome, "MULTIPLICATION");
+    else if (strcmp(op, "**") == 0)
+        strcpy(nome, "POWER");
+    else if (strcmp(op, "/") == 0)
+        strcpy(nome, "DIVISION");
+    else if (strcmp(op, "%") == 0)
+        strcpy(nome, "MODULUS");
+    else if (strcmp(op, "~") == 0)
+        strcpy(nome, "NOT");
+    else if (strcmp(op, "(") == 0)
+        strcpy(nome, "LPAREN");
+    else if (strcmp(op, ")") == 0)
+        strcpy(nome, "RPAREN");
+    else if (strcmp(op, "[") == 0)
+        strcpy(nome, "LBRACKET");
+    else if (strcmp(op, "]") == 0)
+        strcpy(nome, "RBRACKET");
+    else if (strcmp(op, "{") == 0)
+        strcpy(nome, "LBRACE");
+    else if (strcmp(op, "}") == 0)
+        strcpy(nome, "RBRACE");
+    else if (strcmp(op, ",") == 0)
+        strcpy(nome, "COMMA");
+    else if (strcmp(op, ":") == 0)
+        strcpy(nome, "COLON");
+    else if (strcmp(op, ".") == 0)
+        strcpy(nome, "DOT");
+    else if (strcmp(op, "=") == 0)
+        strcpy(nome, "EQUALS");
+    else if (strcmp(op, ";") == 0)
+        strcpy(nome, "SEMICOLON");
+    else if (strcmp(op, "in") == 0)
+        strcpy(nome, "IN");
+    else if (strcmp(op, "is") == 0)
+        strcpy(nome, "IS");
+    else if (strcmp(op, "and") == 0)
+        strcpy(nome, "AND");
+    else if (strcmp(op, "or") == 0)
+        strcpy(nome, "OR");
+    else if (strcmp(op, "not") == 0)
+        strcpy(nome, "NOT");
+    else
+        strcpy(nome, "DESCONHECIDO");
     return nome;
 }
 
-void printToken(Token *token) {
-    if (token->tipo == DESCONHECIDO) {
+void printToken(Token *token)
+{
+    if (token->tipo == DESCONHECIDO)
+    {
         printf("%d# ERRO: Lexema '%s' desconhecido.\n", token->linha, token->lexema);
         exit(1);
     }
     else if (token->tipo == LITERAL || token->tipo == IDENTIFICADOR ||
-             token->tipo == NUMERO) {
-        printf("%d# %s | %d\n", token->linha, atomoParaString(token->tipo), encontrarSimbolo(token->lexema));
+             token->tipo == NUMERO)
+    {
+        TNo *simbolo = encontrarSimbolo(token->lexema);
+
+        printf("%d# %s | %s\n", token->linha, atomoParaString(token->tipo), simbolo != NULL ? simbolo->cadeia : "NULL");
     }
-    else if (token->tipo == OP_ARITMETICO || token->tipo == OP_RELACIONAL || token->tipo == DELIMITER) {
+    else if (token->tipo == OP_ARITMETICO || token->tipo == OP_RELACIONAL || token->tipo == DELIMITER)
+    {
         printf("%d# %s | '%s'\n", token->linha, atomoParaString(token->tipo), obterNomeOperadorDelimitador(token->lexema));
     }
-    else {
+    else
+    {
         printf("%d# %s\n", token->linha, atomoParaString(token->tipo));
     }
 }
 
-void printTabelaSimbolos() {
+void printTabelaSimbolos()
+{
     printf("\n===== TABELA DE SIMBOLOS =====\n");
-    for (int i = 0; i < totalSimbolos; i++) {
-        printf("%d: %s | %s\n", i, tabelaSimbolos[i].valor, atomoParaString(tabelaSimbolos[i].tipo));
+
+    TNo *atual = globalTabela.head;
+    int i = 0;
+
+    while (atual != NULL)
+    {
+        printf("%d: %s | %s | %s\n", i, atual->cadeia, atomoParaString(atual->atomo), tipoDadoParaString(atual->tipo));
+        atual = atual->prox;
+        i++;
     }
 }
 
-void arrayPrinter(char lexemas[512][512], int count) {
+void arrayPrinter(char lexemas[512][512], int count)
+{
     Token *token = obter_atomo(lexemas[posicaoAtual++]);
-    while (posicaoAtual <= count) {
+    while (posicaoAtual <= count)
+    {
         printToken(token);
         token = obter_atomo(lexemas[posicaoAtual++]);
     }
 }
 
-void erroSintatico(const char *mensagem) {
-    printf("\n[ERRO SINTATICO - LINHA %d] %s. (Lookahead atual: '%s' | Tipo: %s)\n", 
+void erroSintatico(const char *mensagem)
+{
+    printf("\n[ERRO SINTATICO - LINHA %d] %s. (Lookahead atual: '%s' | Tipo: %s)\n",
            lookahead.linha, mensagem, lookahead.lexema, atomoParaString(lookahead.tipo));
     exit(1);
 }
 
-Token analisadorLexico() {
-    if (posicaoAtual < totalLexemasGlob) {
+Token analisadorLexico()
+{
+    if (posicaoAtual < totalLexemasGlob)
+    {
         Token *t = obter_atomo(lexemasArray[posicaoAtual]);
         t->linha = mapaLinhasGlobais[posicaoAtual]; // linha salva pelo mapa
 
-        if (t->tipo == DESCONHECIDO) {
+        if (t->tipo == DESCONHECIDO)
+        {
             printf("%d# ERRO: Lexema '%s' desconhecido.\n", t->linha, t->lexema);
             exit(1);
         }
         return *t;
     }
-    
+
     // Tratamento para EOF
     Token fim;
     fim.tipo = EOS;
     strcpy(fim.lexema, "EOF");
     // Se o arquivo acabou, a linha do EOF é a última linha lida
-    fim.linha = totalLexemasGlob > 0 ? mapaLinhasGlobais[totalLexemasGlob - 1] : 1; 
+    fim.linha = totalLexemasGlob > 0 ? mapaLinhasGlobais[totalLexemasGlob - 1] : 1;
     return fim;
 }
 
+void analisadorSemantico()
+{
+    int ladoDireito = 0;
+    tipoUltimaExpressao = UNKNOWN;
+
+    while (!filaVazia(&filaSemantica))
+    {
+        Token tokenConsumido = desenfileirar(&filaSemantica);
+        
+        if (tokenConsumido.tipo == NUMERO)
+        {
+            TNo *no = encontrarSimbolo(tokenConsumido.lexema);
+            if (no != NULL)
+                no->tipo = INTEIRO;
+            tipoUltimaExpressao = INTEIRO;
+        }
+        else if (tokenConsumido.tipo == T_TRUE || tokenConsumido.tipo == T_FALSE)
+        {
+            tipoUltimaExpressao = BOOLEANO;
+        }
+        else if (tokenConsumido.tipo == IDENTIFICADOR)
+        {
+            TNo *no = encontrarSimbolo(tokenConsumido.lexema);
+            if (no == NULL)
+            {
+                printTabelaSimbolos();
+                printf("[ERRO SEMANTICO] Variavel '%s' nao encontrada\n", tokenConsumido.lexema);
+                exit(1);
+            }
+
+            if (!ladoDireito)
+            {
+                // lado esquerdo
+                if (no->tipo == UNKNOWN)
+                {
+                    no->tipo = NAO_DEFINIDO; // aguarda tipo do lado direito
+                    flag = no;
+                }
+                else
+                {
+                    // x já tem tipo, guarda pra verificar compatibilidade depois
+                    flag = no;
+                }
+            }
+            else
+            {
+                // lado direito
+                if (no->tipo == UNKNOWN || no->tipo == NAO_DEFINIDO)
+                {
+                    printTabelaSimbolos();
+                    printf("[ERRO SEMANTICO] Variavel '%s' usada antes de ser definida na linha %d\n",
+                           no->cadeia, tokenConsumido.linha);
+                    exit(1);
+                }
+                // verifica compatibilidade com o que já foi visto no lado direito
+                if (tipoUltimaExpressao != UNKNOWN && tipoUltimaExpressao != no->tipo)
+                {
+                    printTabelaSimbolos();
+                    printf("[ERRO SEMANTICO] Tipo incompativel: '%s' eh %s, esperava %s\n",
+                           no->cadeia, tipoDadoParaString(no->tipo), tipoDadoParaString(tipoUltimaExpressao));
+                    exit(1);
+                }
+                tipoUltimaExpressao = no->tipo;
+            }
+        }
+        else if (tokenConsumido.tipo == OP_ARITMETICO)
+        {
+            if (tipoUltimaExpressao != INTEIRO)
+            {
+                printTabelaSimbolos();
+                printf("[ERRO SEMANTICO] Operacao aritmetica exige INTEIRO, encontrou %s\n",
+                       tipoDadoParaString(tipoUltimaExpressao));
+                exit(1);
+            }
+        }
+        else if (tokenConsumido.tipo == OP_RELACIONAL)
+        {
+            if (tipoUltimaExpressao == UNKNOWN)
+            {
+                printTabelaSimbolos();
+                printf("[ERRO SEMANTICO] Operacao relacional sem operando definido\n");
+                exit(1);
+            }
+            tipoUltimaExpressao = BOOLEANO;
+        }
+        else if (tokenConsumido.tipo == ATRIBUICAO)
+        {
+            ladoDireito = 1; // a partir daqui, próximos tokens são lado direito
+        }
+        else if (tokenConsumido.tipo == T_IF ||
+                 tokenConsumido.tipo == T_WHILE ||
+                 tokenConsumido.tipo == T_FOR)
+        {
+            // condição: resultado tem que ser BOOLEANO
+            ladoDireito = 1; // tudo que vem é lado direito (a condição)
+        }
+    }
+
+    // fim da linha: resolve a atribuição
+    if (flag != NULL)
+    {
+        if (tipoUltimaExpressao == UNKNOWN)
+        {
+            printf("[ERRO SEMANTICO] Lado direito sem tipo definido\n");
+            exit(1);
+        }
+        // x = x + 5: flag já tinha tipo, verifica compatibilidade
+        if (flag->tipo != NAO_DEFINIDO && flag->tipo != tipoUltimaExpressao)
+        {
+            printf("[ERRO SEMANTICO] Atribuicao incompativel: '%s' eh %s mas lado direito eh %s\n", flag->cadeia, tipoDadoParaString(flag->tipo), tipoDadoParaString(tipoUltimaExpressao));
+            exit(1);
+        }
+        // define o tipo do lado esquerdo
+        flag->tipo = tipoUltimaExpressao;
+        flag = NULL;
+    }
+
+    tipoUltimaExpressao = UNKNOWN;
+}
+
+/*switch (tipo)
+{
+    case VARIAVEL:
+        TNo* no = encontrarSimbolo(lookahead.lexema);
+        if(no->tipo == UNKNOWN){
+            if(!tag){
+                no->tipo = NAO_DEFINIDO;
+                flag = no;
+                tag = 0;
+            }else{
+                printf("\n%s não pode ser atibuído, pois não foi definido e nem declarado antes\n", no->cadeia);
+                exit(1);
+            }
+        }
+
+        break;
+    case INTEIRO:
+        TNo* t = encontrarSimbolo(lookahead.lexema);
+        if(t->tipo == UNKNOWN){
+            t->tipo = INTEIRO;
+        }
+        if(flag->tipo == NAO_DEFINIDO){
+            printf("to aq");
+            flag->tipo = INTEIRO;
+        }
+        break;
+    case BOOLEANO:
+        if(flag->tipo == NAO_DEFINIDO){
+            flag->tipo = BOOLEANO;
+        }
+        break;
+    default:
+        break;
+}*/
+
+/*if (tipo == VARIAVEL) {
+    TNo* no = encontrarSimbolo(lookahead.lexema);
+
+    if (tag == 0) {
+        // LADO ESQUERDO: x = ...
+        if (no->tipo == UNKNOWN) {
+            no->tipo = NAO_DEFINIDO;
+        }
+        flag = no;
+    }
+    else {
+
+        // verifica lado direto
+        if (no->tipo == UNKNOWN || no->tipo == NAO_DEFINIDO) {
+            printf("\n[ERRO SEMANTICO] Variavel '%s' nao inicializada na linha %d\n", no->cadeia, lookahead.linha);
+            exit(1);
+        }
+        // Se passou, a variável é válida. O tipo da expressão vira o tipo dela.
+        tipoUltimaExpressao = no->tipo;
+    }
+}
+else if (tipo == INTEIRO) {
+    tipoUltimaExpressao = INTEIRO;
+    // tipamos a flag
+    if (flag != NULL && tag == 0) {
+        flag->tipo = INTEIRO;
+    }
+}
+else if (tipo == BOOLEANO) {
+    tipoUltimaExpressao = BOOLEANO;
+    if (flag != NULL && tag == 0) {
+        flag->tipo = BOOLEANO;
+    }
+}*/
+
+/*if(no == NULL){
+
+}
+if(no->tipo == NAO_DEFINIDO){ //x = x + 5
+
+}else if(no->tipo == INTEIRO){ // X = A + 5
+    flag->tipo = INTEIRO;
+}
+else{
+    no->tipo = NAO_DEFINIDO;
+    flag = no;
+}
+}else if(tipo == INTEIRO){
+flag->tipo = INTEIRO;
+}else if(tipo == BOOLEANO){
+flag->tipo = BOOLEANO;
+}*/
+
 // Verifica e consome um tipo específico de átomo
 // Função única para consumir tokens: verifica o tipo e, opcionalmente, o lexema exato.
-void consome(TAtomo tipo_esperado, const char *lexema_esperado) {
+void consome(TAtomo tipo_esperado, const char *lexema_esperado)
+{
+
     printToken(&lookahead); // Imprime o token atual antes de consumir
-    if (lookahead.tipo == tipo_esperado) {
+    if (lookahead.tipo == tipo_esperado)
+    {
         // Se lexema_esperado não for NULL, precisamos garantir que a string exata bate
-        if (lexema_esperado != NULL) {
-            if (strcmp(lookahead.lexema, lexema_esperado) == 0) {
+        if (lexema_esperado != NULL)
+        {
+            if (strcmp(lookahead.lexema, lexema_esperado) == 0)
+            {
                 posicaoAtual++;
+                if (lookahead.linha == tagLine && lookahead.tipo != EOS)
+                {
+
+                    enfileirar(&filaSemantica, lookahead);
+                }
+                else
+                {
+
+                    if (!filaVazia(&filaSemantica))
+                    {
+                        analisadorSemantico();
+                    }
+                    tagLine = lookahead.linha;
+                    enfileirar(&filaSemantica, lookahead);
+                }
                 lookahead = analisadorLexico();
-            } else {
+            }
+            else
+            {
                 char msg[256];
-                sprintf(msg, "Esperava o simbolo/atributo '%s' (%s), mas encontrou '%s'", 
+                sprintf(msg, "Esperava o simbolo/atributo '%s' (%s), mas encontrou '%s'",
                         lexema_esperado, atomoParaString(tipo_esperado), lookahead.lexema);
                 erroSintatico(msg);
             }
-        } else {
+        }
+        else
+        {
             // Se for NULL, apenas a classe do token (o tipo) importa
             posicaoAtual++;
+            if (lookahead.linha == tagLine && lookahead.tipo != EOS)
+            {
+
+                enfileirar(&filaSemantica, lookahead);
+            }
+            else
+            {
+                if (!filaVazia(&filaSemantica))
+                {
+                    analisadorSemantico();
+                }
+                tagLine = lookahead.linha;
+                enfileirar(&filaSemantica, lookahead);
+            }
             lookahead = analisadorLexico();
         }
-    } else {
+    }
+    else
+    {
         // Erro de tipo
         char msg[256];
-        if (lexema_esperado != NULL) {
+        if (lexema_esperado != NULL)
+        {
             sprintf(msg, "Esperava %s ('%s')", atomoParaString(tipo_esperado), lexema_esperado);
-        } else {
+        }
+        else
+        {
             sprintf(msg, "Esperava token do tipo %s", atomoParaString(tipo_esperado));
         }
         erroSintatico(msg);
     }
 }
 
-
-
 // FIRST(STATEMENT)
-int in_F_STMT() {
-    return (lookahead.tipo == T_IF || lookahead.tipo == T_WHILE || lookahead.tipo == T_FOR || 
-            lookahead.tipo == T_PRINT || lookahead.tipo == T_BREAK || lookahead.tipo == T_CONTINUE || 
-            lookahead.tipo == T_RETURN || lookahead.tipo == T_EXEC || lookahead.tipo == T_RAISE || 
+int in_F_STMT()
+{
+    return (lookahead.tipo == T_IF || lookahead.tipo == T_WHILE || lookahead.tipo == T_FOR ||
+            lookahead.tipo == T_PRINT || lookahead.tipo == T_BREAK || lookahead.tipo == T_CONTINUE ||
+            lookahead.tipo == T_RETURN || lookahead.tipo == T_EXEC || lookahead.tipo == T_RAISE ||
             lookahead.tipo == IDENTIFICADOR || lookahead.tipo == NUMERO || lookahead.tipo == LITERAL ||
             (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0));
 }
 
 // FIRST(TERM)
-int in_F_TERM() {
+int in_F_TERM()
+{
     return (lookahead.tipo == IDENTIFICADOR || lookahead.tipo == NUMERO || lookahead.tipo == LITERAL ||
-            lookahead.tipo == T_TRUE || lookahead.tipo == T_FALSE || 
+            lookahead.tipo == T_TRUE || lookahead.tipo == T_FALSE ||
             (lookahead.tipo == DELIMITER && (strcmp(lookahead.lexema, "[") == 0 || strcmp(lookahead.lexema, "(") == 0)) ||
             lookahead.tipo == T_LEN || lookahead.tipo == T_INPUT);
 }
@@ -603,72 +1257,99 @@ void TUPLE_OR_GROUP();
 void ELEMENTS_OPT();
 void ELEMENTS_TAIL();
 
-
 // ==============================================================================
 // ANALISADOR SINTÁTICO RECURSIVO DESCENDENTE PREDITIVO
 // ==============================================================================
 
-void analisadorSintatico() {
+void analisadorSintatico()
+{
     posicaoAtual = 0;
     lookahead = analisadorLexico();
     START();
 }
 
-void START() {
+void START()
+{
     // FIRST(START) = F_STMT. FOLLOW(START) = { EOS }. Deriva: STATEMENTS EOS
     STATEMENTS();
     consome(EOS, NULL);
 }
 
-void STATEMENTS() {
+void STATEMENTS()
+{
     // FIRST(STATEMENTS) = F_STMT. Deriva: STATEMENT STATEMENTS_PRIME
     STATEMENT();
     STATEMENTS_PRIME();
 }
 
-void STATEMENTS_PRIME() {
+void STATEMENTS_PRIME()
+{
     // FIRST(STATEMENTS_PRIME) = F_STMT U { EPSILON }. FOLLOW(STATEMENTS_PRIME) = { EOS }
-    if (in_F_STMT()) {
+    if (in_F_STMT())
+    {
         STATEMENTS();
     }
     // else EPSILON
 }
 
-void STATEMENT() {
+void STATEMENT()
+{
     // FIRST(STATEMENT) = F_STMT. Deriva: IF_STATEMENT | WHILE_STATEMENT | FOR_STATEMENT | COMMAND_STATEMENT | ASSIGN_OR_EXPR
-    if (lookahead.tipo == T_IF) {
+    if (lookahead.tipo == T_IF)
+    {
         IF_STATEMENT();
-    } else if (lookahead.tipo == T_WHILE) {
+    }
+    else if (lookahead.tipo == T_WHILE)
+    {
         WHILE_STATEMENT();
-    } else if (lookahead.tipo == T_FOR) {
+    }
+    else if (lookahead.tipo == T_FOR)
+    {
         FOR_STATEMENT();
-    } else if (lookahead.tipo == T_PRINT || lookahead.tipo == T_BREAK || 
-               lookahead.tipo == T_CONTINUE || lookahead.tipo == T_RETURN || 
-               lookahead.tipo == T_EXEC || lookahead.tipo == T_RAISE ||
-               lookahead.tipo == T_INPUT) {
+    }
+    else if (lookahead.tipo == T_PRINT || lookahead.tipo == T_BREAK ||
+             lookahead.tipo == T_CONTINUE || lookahead.tipo == T_RETURN ||
+             lookahead.tipo == T_EXEC || lookahead.tipo == T_RAISE ||
+             lookahead.tipo == T_INPUT)
+    {
         COMMAND_STATEMENT();
-    } else if (lookahead.tipo == IDENTIFICADOR || lookahead.tipo == NUMERO || 
-               lookahead.tipo == LITERAL || 
-               (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0)) {
+    }
+    else if (lookahead.tipo == IDENTIFICADOR || lookahead.tipo == NUMERO ||
+             lookahead.tipo == LITERAL ||
+             (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0))
+    {
+
         ASSIGN_OR_EXPR();
-    } else {
+    }
+    else
+    {
         erroSintatico("Token inesperado no inicio de um statement");
     }
 }
 
-void ASSIGN_OR_EXPR() {
+void ASSIGN_OR_EXPR()
+{
     // FIRST(ASSIGN_OR_EXPR) = { IDENTIFICADOR, NUMERO, LITERAL, '(' }
-    if (lookahead.tipo == IDENTIFICADOR) {
+
+    // ASSIGN_OR_EXPR.TYPEDATA = IDENTIFICADOR.TYPEDATA INDEX_OPT.TYPEDATA ASSIGN_OR_EXPR_TAIL.TYPEDATA
+    if (lookahead.tipo == IDENTIFICADOR)
+    {
         consome(IDENTIFICADOR, NULL);
         INDEX_OPT();
         ASSIGN_OR_EXPR_TAIL();
-    } else if (lookahead.tipo == NUMERO) {
+    }
+    else if (lookahead.tipo == NUMERO)
+    {
         consome(NUMERO, NULL);
         EXPRESSION_PRIME();
-    } else if (lookahead.tipo == LITERAL) {
+    }
+    else if (lookahead.tipo == LITERAL)
+    {
         consome(LITERAL, NULL);
         EXPRESSION_PRIME();
-    } else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0) {
+    }
+    else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0)
+    {
         consome(DELIMITER, "(");
         EXPRESSION();
         consome(DELIMITER, ")");
@@ -676,23 +1357,29 @@ void ASSIGN_OR_EXPR() {
     }
 }
 
-void ASSIGN_OR_EXPR_TAIL() {
+void ASSIGN_OR_EXPR_TAIL()
+{
     // FIRST(ASSIGN_OR_EXPR_TAIL) = { '=', OPERATOR, EPSILON }
-    if (lookahead.tipo == ATRIBUICAO) {
+    if (lookahead.tipo == ATRIBUICAO)
+    {
         consome(ATRIBUICAO, NULL);
         EXPRESSION();
-    } else {
-        EXPRESSION_PRIME(); 
+    }
+    else
+    {
+        EXPRESSION_PRIME();
     }
 }
 
-void IF_STATEMENT() {
+void IF_STATEMENT()
+{
     // FIRST(IF_STATEMENT) = { if }. Deriva: IF_START IF_TAIL
     IF_START();
     IF_TAIL();
 }
 
-void IF_START() {
+void IF_START()
+{
     // FIRST(IF_START) = { if }. Deriva: if EXPRESSION : STATEMENT
     consome(T_IF, NULL);
     EXPRESSION();
@@ -700,13 +1387,17 @@ void IF_START() {
     STATEMENT();
 }
 
-void IF_TAIL() {
+void IF_TAIL()
+{
     // FIRST(IF_TAIL) = { else, elif, EPSILON }. FOLLOW(IF_TAIL) = FL_STMT
-    if (lookahead.tipo == T_ELSE) {
+    if (lookahead.tipo == T_ELSE)
+    {
         consome(T_ELSE, NULL);
         consome(DELIMITER, ":");
         STATEMENT();
-    } else if (lookahead.tipo == T_ELIF) {
+    }
+    else if (lookahead.tipo == T_ELIF)
+    {
         ELIF_STATEMENTS();
         STATEMENT();
         ELIF_TAIL();
@@ -714,9 +1405,11 @@ void IF_TAIL() {
     // else EPSILON
 }
 
-void ELIF_TAIL() {
+void ELIF_TAIL()
+{
     // FIRST(ELIF_TAIL) = { else, EPSILON }. FOLLOW(ELIF_TAIL) = FL_STMT
-    if (lookahead.tipo == T_ELSE) {
+    if (lookahead.tipo == T_ELSE)
+    {
         consome(T_ELSE, NULL);
         consome(DELIMITER, ":");
         STATEMENT();
@@ -724,13 +1417,15 @@ void ELIF_TAIL() {
     // else EPSILON
 }
 
-void ELIF_STATEMENTS() {
+void ELIF_STATEMENTS()
+{
     // FIRST(ELIF_STATEMENTS) = { elif }. Deriva: ELIF_STATEMENT ELIF_STATEMENTS_PRIME
     ELIF_STATEMENT();
     ELIF_STATEMENTS_PRIME();
 }
 
-void ELIF_STATEMENT() {
+void ELIF_STATEMENT()
+{
     // FIRST(ELIF_STATEMENT) = { elif }. Deriva: elif EXPRESSION : STATEMENT
     consome(T_ELIF, NULL);
     EXPRESSION();
@@ -738,15 +1433,18 @@ void ELIF_STATEMENT() {
     STATEMENT();
 }
 
-void ELIF_STATEMENTS_PRIME() {
+void ELIF_STATEMENTS_PRIME()
+{
     // FIRST(ELIF_STATEMENTS_PRIME) = { elif, EPSILON }. FOLLOW(ELIF_STATEMENTS_PRIME) = F_STMT
-    if (lookahead.tipo == T_ELIF) {
+    if (lookahead.tipo == T_ELIF)
+    {
         ELIF_STATEMENTS();
     }
     // else EPSILON
 }
 
-void WHILE_STATEMENT() {
+void WHILE_STATEMENT()
+{
     // FIRST(WHILE_STATEMENT) = { while }. Deriva: while EXPRESSION : STATEMENT
     consome(T_WHILE, NULL);
     EXPRESSION();
@@ -754,7 +1452,8 @@ void WHILE_STATEMENT() {
     STATEMENT();
 }
 
-void FOR_STATEMENT() {
+void FOR_STATEMENT()
+{
     // FIRST(FOR_STATEMENT) = { for }. Deriva: for IDENTIFICADOR in range ( EXPRESSION ) : STATEMENT
     consome(T_FOR, NULL);
     consome(IDENTIFICADOR, NULL);
@@ -767,119 +1466,175 @@ void FOR_STATEMENT() {
     STATEMENT();
 }
 
-void COMMAND_STATEMENT() {
+void COMMAND_STATEMENT()
+{
     // FIRST(COMMAND_STATEMENT) = { print, break, continue, return, exec, raise, input }
-    if (lookahead.tipo == T_PRINT) {
+    if (lookahead.tipo == T_PRINT)
+    {
         consome(T_PRINT, NULL);
         consome(DELIMITER, "(");
         ELEMENTS_OPT();
         consome(DELIMITER, ")");
-    } else if (lookahead.tipo == T_INPUT) {
+    }
+    else if (lookahead.tipo == T_INPUT)
+    {
         consome(T_INPUT, NULL);
         consome(DELIMITER, "(");
         consome(LITERAL, NULL);
         consome(DELIMITER, ")");
-    } else if (lookahead.tipo == T_BREAK) {
+    }
+    else if (lookahead.tipo == T_BREAK)
+    {
         consome(T_BREAK, NULL);
-    } else if (lookahead.tipo == T_CONTINUE) {
+    }
+    else if (lookahead.tipo == T_CONTINUE)
+    {
         consome(T_CONTINUE, NULL);
-    } else if (lookahead.tipo == T_RETURN) {
+    }
+    else if (lookahead.tipo == T_RETURN)
+    {
         consome(T_RETURN, NULL);
         EXPRESSION();
-    } else if (lookahead.tipo == T_EXEC) {
+    }
+    else if (lookahead.tipo == T_EXEC)
+    {
         consome(T_EXEC, NULL);
         EXPRESSION();
-    } else if (lookahead.tipo == T_RAISE) {
+    }
+    else if (lookahead.tipo == T_RAISE)
+    {
         consome(T_RAISE, NULL);
         EXPRESSION();
     }
 }
 
-void INDEX_OPT() {
+void INDEX_OPT()
+{
     // FIRST(INDEX_OPT) = { '[', EPSILON }. FOLLOW(INDEX_OPT) = FL_STMT U { '=', ':', ')', ']', ',', OPERATOR }
-    if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "[") == 0) {
+    // INDEX_OPT.TYPEDATA = [ EXPRESSION.TYPEDATA ] INDEX_OPT.TYPEDATA
+    if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "[") == 0)
+    {
         consome(DELIMITER, "[");
-        EXPRESSION();
+        EXPRESSION(); // EXPRESSION.TYPEDATA
         consome(DELIMITER, "]");
-        INDEX_OPT(); 
+        INDEX_OPT(); // INDEX_OPT.TYPEDATA
     }
-    // else EPSILON 
+    // else EPSILON
 }
 
-void EXPRESSION() {
+void EXPRESSION()
+{
     // FIRST(EXPRESSION) = F_TERM. Deriva: TERM EXPRESSION_PRIME
-    TERM();
-    EXPRESSION_PRIME();
+    // EXPRESSION.TYPEDATA = TERM.TYPEDATA EXPRESSION_PRIME.TYPEDATA
+    TERM();             // TERM.TYPEDATA
+    EXPRESSION_PRIME(); // EXPRESSION_PRIME.TYPEDATA
 }
 
-void EXPRESSION_PRIME() {
+void EXPRESSION_PRIME()
+{
     // FIRST(EXPRESSION_PRIME) = { OPERATOR, EPSILON }. FOLLOW(EXPRESSION_PRIME) = FL_STMT U { ':', ')', ']', ',' }
-    if (lookahead.tipo == OP_ARITMETICO || lookahead.tipo == OP_RELACIONAL) {
-        consome(lookahead.tipo, NULL); 
+    if (lookahead.tipo == OP_ARITMETICO || lookahead.tipo == OP_RELACIONAL)
+    {
+        consome(lookahead.tipo, NULL);
         TERM();
         EXPRESSION_PRIME();
     }
     // else EPSILON
 }
 
-void TERM() {
+void TERM()
+{
     // FIRST(TERM) = F_TERM = { IDENTIFICADOR, NUMERO, LITERAL, TRUE, FALSE, '[', '(', len, input }
-    if (lookahead.tipo == IDENTIFICADOR) {
+    /*
+    TERM.TYPEDATA = IDENTIFICADOR.TYPEDATA INDEX_OPT.TYPEDATA
+    TERM.INTEIRO = NUMERO.INTEIRO
+    TERM.BOOLEANO = TRUE.BOOLEANO
+    TERM.BOOLEANO = FALSE.BOOLEANO
+    TERM.TYPEDATA = LIST.TYPEDATA
+    TERM.TYPEDATA = TUPLE_OR_GROUP.TYPEDATA
+    */
+    if (lookahead.tipo == IDENTIFICADOR)
+    {
         consome(IDENTIFICADOR, NULL);
-        INDEX_OPT();
-    } else if (lookahead.tipo == NUMERO) {
+        INDEX_OPT(); // INDEX_OPT.TYPEDATA
+    }
+    else if (lookahead.tipo == NUMERO)
+    {
         consome(NUMERO, NULL);
-    } else if (lookahead.tipo == LITERAL) {
+    }
+    else if (lookahead.tipo == LITERAL)
+    {
         consome(LITERAL, NULL);
-    } else if (lookahead.tipo == T_TRUE) {
+    }
+    else if (lookahead.tipo == T_TRUE)
+    {
         consome(T_TRUE, NULL);
-    } else if (lookahead.tipo == T_FALSE) {
+    }
+    else if (lookahead.tipo == T_FALSE)
+    {
         consome(T_FALSE, NULL);
-    } else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "[") == 0) {
-        LIST();
-    } else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0) {
-        TUPLE_OR_GROUP();
-    } else if (lookahead.tipo == T_LEN) {
+    }
+    else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "[") == 0)
+    {
+        LIST(); // TERM.TYPEDATA = LIST.TYPEDATA
+    }
+    else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0)
+    {
+        TUPLE_OR_GROUP(); // TUPLE_OR_GROUP.TYPEDATA
+    }
+    else if (lookahead.tipo == T_LEN)
+    {
         consome(T_LEN, NULL);
         consome(DELIMITER, "(");
         EXPRESSION();
         consome(DELIMITER, ")");
-    } else if (lookahead.tipo == T_INPUT) {
+    }
+    else if (lookahead.tipo == T_INPUT)
+    {
         consome(T_INPUT, NULL);
         consome(DELIMITER, "(");
         consome(LITERAL, NULL);
         consome(DELIMITER, ")");
-    } else {
+    }
+    else
+    {
         erroSintatico("Esperado um TERM (Identificador, Numero, String, Tupla, Lista, etc)");
     }
 }
 
-void LIST() {
+void LIST()
+{
     // FIRST(LIST) = { '[' }. Deriva: [ ELEMENTS_OPT ]
     consome(DELIMITER, "[");
+
     ELEMENTS_OPT();
     consome(DELIMITER, "]");
 }
 
-void TUPLE_OR_GROUP() {
+void TUPLE_OR_GROUP()
+{
     // FIRST(TUPLE_OR_GROUP) = { '(' }. Deriva: ( ELEMENTS_OPT )
     consome(DELIMITER, "(");
     ELEMENTS_OPT();
     consome(DELIMITER, ")");
 }
 
-void ELEMENTS_OPT() {
+void ELEMENTS_OPT()
+{
     // FIRST(ELEMENTS_OPT) = F_TERM U { EPSILON }. FOLLOW(ELEMENTS_OPT) = { ']', ')' }
-    if (in_F_TERM()) {
+    if (in_F_TERM())
+    {
         EXPRESSION();
         ELEMENTS_TAIL();
     }
     // else EPSILON
 }
 
-void ELEMENTS_TAIL() {
+void ELEMENTS_TAIL()
+{
     // FIRST(ELEMENTS_TAIL) = { ',', EPSILON }. FOLLOW(ELEMENTS_TAIL) = { ']', ')' }
-    if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, ",") == 0) {
+    if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, ",") == 0)
+    {
         consome(DELIMITER, ",");
         EXPRESSION();
         ELEMENTS_TAIL();
@@ -887,35 +1642,45 @@ void ELEMENTS_TAIL() {
     // else EPSILON
 }
 
-int main(int argc, char **argv) {
-    if (argc < 2) {
+int main(int argc, char **argv)
+{
+    if (argc < 2)
+    {
         printf("Uso: %s <arquivo_fonte.mp>\n", argv[0]);
         return 1;
-    } else if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
+    }
+    else if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)
+    {
         printf("Uso: %s <arquivo_fonte.mp>\n", argv[0]);
         printf("Analisa lexica e sintaticamente um arquivo fonte em Mini-Python.\n");
         return 0;
-    } else if (argc > 2) {
+    }
+    else if (argc > 2)
+    {
         printf("Erro: Muitos argumentos fornecidos.\n");
         printf("Uso: %s <arquivo_fonte.mp>\n", argv[0]);
         return 1;
     }
 
-    const char* filename = argv[1]; 
-    
+    const char *filename = argv[1];
+
     // Carrega os lexemas do arquivo na array e suas linhas correspondentes no mapa
     totalLexemasGlob = lexemas(filename, lexemasArray, mapaLinhasGlobais);
-    
-   if (totalLexemasGlob >= 0) {
-        printf("===== INICIANDO ANALISE LEXICA E SINTATICA =====\n");
-        
+
+    // arrayPrinter(lexemasArray,totalLexemasGlob);
+
+    if (totalLexemasGlob >= 0)
+    {
+        printf("===== INICIANDO ANALISE LEXICASIN, SINTATICA E SEMANTICA =====\n");
+
         // Inicia a análise sintática
         analisadorSintatico();
 
         printf("\n> SUCESSO: Analise Sintatica concluida! A gramatica do arquivo eh valida.\n");
         printTabelaSimbolos();
-        
-    } else {
+    }
+    else
+    {
         printf("Falha na etapa de analise lexica.\n");
     }
 
