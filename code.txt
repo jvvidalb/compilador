@@ -24,3 +24,7 @@ if x == z :
 
 if x != z :
     print ( " " )
+
+a = a + 5
+b = b + 5
+t = t + a

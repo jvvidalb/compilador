@@ -241,6 +241,13 @@ typedef enum
     NAO_DEFINIDO
 } TipoDado;
 
+typedef enum
+{
+    ATIVA,
+    INATIVA,
+    INDEFINIDO
+} Temp;
+
 // Token
 typedef struct
 {
@@ -328,6 +335,7 @@ typedef struct _TNo
     TipoDado tipo;
     int usado;
     int endereco;
+    Temp temp;
     struct _TNo *prox;
 } TNo;
 
@@ -877,7 +885,18 @@ void printTabelaSimbolos()
 
     while (atual != NULL)
     {
-        printf("%d: %s | %s | %s | %d | %d \n", i, atual->cadeia, atomoParaString(atual->atomo), tipoDadoParaString(atual->tipo), atual->usado, atual->endereco);
+        printf("---------------------------------------------------------------\n");
+        printf("%-5s | %-15s | %-10s | %-10s | %-5s | %-8s\n",
+               "Index", "Cadeia", "Atomo", "Tipo", "Usado", "Endereco");
+        printf("---------------------------------------------------------------\n");
+
+        printf("%-5d | %-15s | %-10s | %-10s | %-5d | %-8d\n",
+               i,
+               atual->cadeia,
+               atomoParaString(atual->atomo),
+               tipoDadoParaString(atual->tipo),
+               atual->usado,
+               atual->endereco);
         atual = atual->prox;
         i++;
     }
@@ -926,16 +945,18 @@ Token analisadorLexico()
 
 void analisadorSemantico()
 {
+    int proxLine = 0;
     tipoUltimaExpressao = UNKNOWN;
 
     if (buscarNaFila(&filaSemantica, "input") != NULL)
     {
-        while (!filaVazia(&filaSemantica)) desenfileirar(&filaSemantica);
+        while (!filaVazia(&filaSemantica))
+            desenfileirar(&filaSemantica);
         return;
     }
 
     int temAtribuicao = buscarNaFila(&filaSemantica, "=") != NULL ? 1 : 0;
-   
+
     int ladoDireito = !temAtribuicao ? 1 : 0;
 
     while (!filaVazia(&filaSemantica))
@@ -946,7 +967,7 @@ void analisadorSemantico()
         {
             TNo *no = encontrarSimbolo(tokenConsumido.lexema);
             if (no != NULL && no->tipo == UNKNOWN)
-                no->tipo = INTEIRO;  // só tipifica, sem endereçar
+                no->tipo = INTEIRO; // só tipifica, sem endereçar
             tipoUltimaExpressao = INTEIRO;
         }
         else if (tokenConsumido.tipo == T_TRUE || tokenConsumido.tipo == T_FALSE)
@@ -1014,10 +1035,11 @@ void analisadorSemantico()
         {
             ladoDireito = 1;
         }
-        else if (tokenConsumido.tipo == T_IF   ||
+        else if (tokenConsumido.tipo == T_IF ||
                  tokenConsumido.tipo == T_WHILE ||
                  tokenConsumido.tipo == T_FOR)
         {
+            proxLine = 1;
             ladoDireito = 1;
         }
     }
@@ -1137,7 +1159,8 @@ flag->tipo = BOOLEANO;
 void consome(TAtomo tipo_esperado, const char *lexema_esperado)
 {
 
-    if (lookahead.tipo != EOS) printToken(&lookahead); // Imprime o token atual antes de consumir
+    if (lookahead.tipo != EOS)
+        printToken(&lookahead); // Imprime o token atual antes de consumir
     if (lookahead.tipo == tipo_esperado)
     {
         // Se lexema_esperado não for NULL, precisamos garantir que a string exata bate
