@@ -35,6 +35,7 @@ limite = 5
 for i in range ( 10 ) :
     print ( i )
 
+i = True
 for j in range ( 15 ) :
     print ( j )
 
@@ -47,3 +48,4 @@ while contador < limite :
 
 while contador >= 0 :
     print ( contador )
+

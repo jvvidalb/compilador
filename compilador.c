@@ -244,13 +244,17 @@ typedef enum
 typedef enum
 {
     ACESSIVEL,
-    INACESSIVEL,
-    INDEFINIDO,
-    LISTA,
-    TUPLA,
-    ITERATIVO,
-    VARLOCAL
+    INACESSIVEL
 } Temp;
+
+typedef enum
+{
+    VARIAVEL,
+    ITERATIVO,
+    LISTA,
+    TUPLA
+} Estrutura;
+
 // Token
 typedef struct
 {
@@ -339,6 +343,7 @@ typedef struct _TNo
     int usado;
     int endereco;
     Temp temp;
+    Estrutura struc;
     struct _TNo *prox;
 } TNo;
 
@@ -359,7 +364,8 @@ FilaSemantica filaSemantica = {NULL, NULL};
 // SimboloTabela tabelaSimbolos[1024];
 // int totalSimbolos = 0;
 SimboloTabela globalTabela = {NULL, NULL, 0};
-TNo *flag = {NULL}; // pega linha da tabela
+TNo *flag = NULL;    // pega linha da tabela
+TNo *noLocal = NULL; // aponta para a variável declarada dentro de um bloco de controle
 int tagLine = 1;
 int totalLexemasGlob = 0;
 int mapaLinhasGlobais[512]; // Adicione esta linha
@@ -500,8 +506,8 @@ void adicionarSimbolo(char *lexema, TAtomo tipo)
         atual = atual->prox;
     }
 
-    // Cria novo nó
-    TNo *novo = (TNo *)malloc(sizeof(TNo));
+    // Cria novo nó — calloc zera todos os campos, evitando lixo de memória
+    TNo *novo = (TNo *)calloc(1, sizeof(TNo));
 
     if (novo == NULL)
     {
@@ -515,6 +521,10 @@ void adicionarSimbolo(char *lexema, TAtomo tipo)
 
     novo->atomo = tipo;
     novo->tipo = UNKNOWN;
+    novo->temp = ACESSIVEL;
+    novo->struc = VARIAVEL;
+    novo->usado = 0;
+    novo->endereco = 0;
     globalTabela.totalSimbolos++;
 
     novo->prox = NULL;
@@ -738,7 +748,7 @@ Token *obter_atomo(char *lexema)
     return &token;
 }
 
-const char *tempParaString(Temp t)
+char *tempParaString(Temp t)
 {
     switch (t)
     {
@@ -746,12 +756,19 @@ const char *tempParaString(Temp t)
         return "ACESSIVEL";
     case INACESSIVEL:
         return "INACESSIVEL";
-    case VARLOCAL:
-        return "VARLOCAL";
+    default:
+        return "DESCONHECIDO";
+    }
+}
+
+char *estruturaParaString(Estrutura e)
+{
+    switch (e)
+    {
+    case VARIAVEL:
+        return "VARIAVEL";
     case ITERATIVO:
         return "ITERATIVO";
-    case INDEFINIDO:
-        return "INDEFINIDO";
     case LISTA:
         return "LISTA";
     case TUPLA:
@@ -942,24 +959,29 @@ void printTabelaSimbolos()
 
     TNo *atual = globalTabela.head;
     int i = 0;
-    printf("-----------------------------------------------------------------------------------------------------------------------\n");
-    printf("%-5s | %-15s | %-18s | %-12s | %-22s | %-6s | %-8s\n",
-           "Index", "Cadeia", "Atomo", "Tipo", "Estado", "Usado", "Endereco");
-    printf("-----------------------------------------------------------------------------------------------------------------------\n");
+
+    printf("-------------------------------------------------------------------------------------------------------------\n");
+    printf("%-5s | %-20s | %-18s | %-12s | %-12s | %-12s | %-6s | %-8s\n",
+           "Idx", "Cadeia", "Atomo", "Tipo", "Estado", "Estrutura", "Usado", "Endereco");
+    printf("-------------------------------------------------------------------------------------------------------------\n");
+
     while (atual != NULL)
     {
-
-        printf("%-5i | %-15s | %-18s | %-12s | %-22s | %-6i | %-8i\n",
+        printf("%-5d | %-20s | %-18s | %-12s | %-12s | %-12s | %-6d | %-8d\n",
                i,
                atual->cadeia,
                atomoParaString(atual->atomo),
                tipoDadoParaString(atual->tipo),
                tempParaString(atual->temp),
+               estruturaParaString(atual->struc),
                atual->usado,
                atual->endereco);
+
         atual = atual->prox;
         i++;
     }
+
+    printf("-------------------------------------------------------------------------------------------------------------\n");
 }
 
 void arrayPrinter(char lexemas[512][512], int count)
@@ -1022,6 +1044,9 @@ void analisadorSemantico()
                              buscarNaFila(&filaSemantica, "while") != NULL ||
                              buscarNaFila(&filaSemantica, "for") != NULL);
 
+    // Flag para saber se a variável do lado esquerdo foi reativada (era INACESSIVEL)
+    int flagReativada = 0;
+
     while (!filaVazia(&filaSemantica))
     {
         Token tokenConsumido = desenfileirar(&filaSemantica);
@@ -1046,36 +1071,42 @@ void analisadorSemantico()
                 exit(1);
             }
 
-            // REGRA: Impedir uso de variáveis que se tornaram inacessíveis por estouro de escopo
-            if (no->temp == INACESSIVEL)
-            {
-                printf("[ERRO SEMANTICO - LINHA %d] Variavel '%s' nao pode ser acessada (fora do escopo local).\n", tokenConsumido.linha, no->cadeia);
-                exit(1);
-            }
-
             if (!ladoDireito)
             {
                 // Lado esquerdo da atribuição (Declaração/Escrita)
-                if (no->tipo == UNKNOWN)
+
+                // REGRA: Variável INACESSIVEL no lado esquerdo é reativada com novo tipo
+                if (no->temp == INACESSIVEL)
+                {
+                    no->tipo = NAO_DEFINIDO;
+                    no->temp = ACESSIVEL;
+                    no->struc = VARIAVEL;
+                    no->usado = 0;
+                    flagReativada = 1;
+                }
+                else if (no->tipo == UNKNOWN)
                 {
                     no->tipo = NAO_DEFINIDO;
                     no->endereco = end++;
                 }
 
-                // Se herdar o efeito de uma linha de controle anterior, ela é uma variável local temporária
+                // Se declarada dentro do corpo de um bloco, guarda referência para invalidar depois
                 if (proxLine == 1)
-                {
-                    no->temp = VARLOCAL;
-                }
-                else if (no->temp != VARLOCAL && no->temp != ITERATIVO)
-                {
-                    no->temp = ACESSIVEL; // Variável global normal
-                }
+                    noLocal = no;
+
+                no->struc = VARIAVEL;
 
                 flag = no;
             }
             else
             {
+                // REGRA: Impedir uso de variáveis inacessíveis no lado DIREITO
+                if (no->temp == INACESSIVEL)
+                {
+                    printf("[ERRO SEMANTICO - LINHA %d] Variavel '%s' nao pode ser acessada (fora do escopo local).\n", tokenConsumido.linha, no->cadeia);
+                    exit(1);
+                }
+
                 // Lado direito (Uso/Leitura)
                 if (no->tipo == UNKNOWN || no->tipo == NAO_DEFINIDO)
                 {
@@ -1116,6 +1147,23 @@ void analisadorSemantico()
         else if (tokenConsumido.tipo == ATRIBUICAO)
         {
             ladoDireito = 1;
+
+            // Detecta se o lado direito é uma lista [ ou tupla (
+            // O próximo token na fila revela a estrutura
+            if (filaSemantica.head != NULL)
+            {
+                char *prox = filaSemantica.head->token.lexema;
+                if (strcmp(prox, "[") == 0 && flag != NULL)
+                {
+                    flag->struc = LISTA;
+                    flag->tipo = INTEIRO; // tipo provisório; será validado pelo conteúdo
+                }
+                else if (strcmp(prox, "(") == 0 && flag != NULL)
+                {
+                    flag->struc = TUPLA;
+                    flag->tipo = INTEIRO; // tipo provisório
+                }
+            }
         }
         else if (tokenConsumido.tipo == T_IF || tokenConsumido.tipo == T_WHILE)
         {
@@ -1134,8 +1182,9 @@ void analisadorSemantico()
                 TNo *noIter = encontrarSimbolo(nodoVar->token.lexema);
                 if (noIter != NULL)
                 {
-                    noIter->tipo = INTEIRO; // Forçado a iniciar como INTEIRO por causa do range
-                    noIter->temp = ITERATIVO;
+                    noIter->tipo = INTEIRO;
+                    noIter->struc = ITERATIVO;
+                    noIter->temp = ACESSIVEL;
                     noIter->endereco = end++;
                 }
             }
@@ -1144,45 +1193,57 @@ void analisadorSemantico()
 
     if (flag != NULL)
     {
-        if (tipoUltimaExpressao == UNKNOWN)
+        // Para LISTA e TUPLA, o tipo já foi definido pela estrutura — não precisa checar
+        if (flag->struc == LISTA || flag->struc == TUPLA)
         {
-            printf("[ERRO SEMANTICO] Lado direito da atribuicao sem tipo definido.\n");
-            exit(1);
+            flag = NULL;
+            flagReativada = 0;
         }
-        if (flag->tipo != NAO_DEFINIDO && flag->tipo != tipoUltimaExpressao)
+        else
         {
-            printf("[ERRO SEMANTICO] Atribuicao incompativel: '%s' eh %s mas lado direito eh %s.\n",
-                   flag->cadeia,
-                   tipoDadoParaString(flag->tipo),
-                   tipoDadoParaString(tipoUltimaExpressao));
-            exit(1);
+            if (tipoUltimaExpressao == UNKNOWN)
+            {
+                printf("[ERRO SEMANTICO] Lado direito da atribuicao sem tipo definido.\n");
+                exit(1);
+            }
+            if (!flagReativada && flag->tipo != NAO_DEFINIDO && flag->tipo != tipoUltimaExpressao)
+            {
+                printf("[ERRO SEMANTICO] Atribuicao incompativel: '%s' eh %s mas lado direito eh %s.\n",
+                       flag->cadeia,
+                       tipoDadoParaString(flag->tipo),
+                       tipoDadoParaString(tipoUltimaExpressao));
+                exit(1);
+            }
+            flag->tipo = tipoUltimaExpressao;
+            flag = NULL;
+            flagReativada = 0;
         }
-        flag->tipo = tipoUltimaExpressao;
-        flag = NULL;
     }
 
     // Gerenciamento de Escopo ao fim da linha avaliada
     if (ehLinhaDeControle)
     {
-        // Se a linha atual foi a própria declaração do IF/WHILE/FOR,
-        // sinalizamos que a PRÓXIMA linha colherá os escopos locais.
         proxLine = 1;
     }
     else if (proxLine == 1)
     {
-        // Se estamos executando a linha subsequente da estrutura controlada,
-        // ao final dela limpamos (invalidamos) as variáveis temporárias criadas.
+        // Invalida a variável declarada no corpo do bloco (identificada por noLocal)
+        if (noLocal != NULL)
+        {
+            noLocal->temp = INACESSIVEL;
+            noLocal = NULL;
+        }
+        // Invalida também a variável iteradora do for (identificada por struc == ITERATIVO)
         TNo *atual = globalTabela.head;
         while (atual != NULL)
         {
-            if (atual->temp == VARLOCAL || atual->temp == ITERATIVO)
-            {
+            if (atual->struc == ITERATIVO)
                 atual->temp = INACESSIVEL;
-            }
             atual = atual->prox;
         }
-        proxLine = 0; // O efeito de uma linha terminou
+        proxLine = 0;
     }
+
 
     tipoUltimaExpressao = UNKNOWN;
 }
