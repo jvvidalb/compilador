@@ -33,9 +33,9 @@ contador = 0
 limite = 5
 
 for i in range ( 10 ) :
-    print ( i )
+    contador = 1
+a = i
 
-i = True
 for j in range ( 15 ) :
     print ( j )
 

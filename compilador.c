@@ -1074,6 +1074,7 @@ void analisadorSemantico()
             if (!ladoDireito)
             {
                 // Lado esquerdo da atribuição (Declaração/Escrita)
+                int ehNovaDeclaracao = 0;
 
                 // REGRA: Variável INACESSIVEL no lado esquerdo é reativada com novo tipo
                 if (no->temp == INACESSIVEL)
@@ -1083,15 +1084,18 @@ void analisadorSemantico()
                     no->struc = VARIAVEL;
                     no->usado = 0;
                     flagReativada = 1;
+                    ehNovaDeclaracao = 1;
                 }
                 else if (no->tipo == UNKNOWN)
                 {
                     no->tipo = NAO_DEFINIDO;
                     no->endereco = end++;
+                    ehNovaDeclaracao = 1;
                 }
+                // reatribuição de variável já existente: não invalida ao sair do bloco
 
-                // Se declarada dentro do corpo de um bloco, guarda referência para invalidar depois
-                if (proxLine == 1)
+                // Só guarda noLocal se for declaração nova dentro de um bloco
+                if (proxLine == 1 && ehNovaDeclaracao)
                     noLocal = no;
 
                 no->struc = VARIAVEL;
@@ -1247,6 +1251,7 @@ void analisadorSemantico()
 
     tipoUltimaExpressao = UNKNOWN;
 }
+
 
 void possuiVarNaoUtilizada()
 {
