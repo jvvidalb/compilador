@@ -252,7 +252,8 @@ typedef enum
     VARIAVEL,
     ITERATIVO,
     LISTA,
-    TUPLA
+    TUPLA,
+    VALOR
 } Estrutura;
 
 // Token
@@ -765,6 +766,8 @@ char *estruturaParaString(Estrutura e)
 {
     switch (e)
     {
+    case VALOR:
+        return "VALOR";
     case VARIAVEL:
         return "VARIAVEL";
     case ITERATIVO:
@@ -1054,9 +1057,12 @@ void analisadorSemantico()
         if (tokenConsumido.tipo == NUMERO)
         {
             TNo *no = encontrarSimbolo(tokenConsumido.lexema);
-            if (no != NULL && no->tipo == UNKNOWN)
+            if (no != NULL && no->tipo == UNKNOWN){
                 no->tipo = INTEIRO;
+                no->struc = VALOR;
+            }
             tipoUltimaExpressao = INTEIRO;
+
         }
         else if (tokenConsumido.tipo == T_TRUE || tokenConsumido.tipo == T_FALSE)
         {
@@ -1097,8 +1103,10 @@ void analisadorSemantico()
                 // Só guarda noLocal se for declaração nova dentro de um bloco
                 if (proxLine == 1 && ehNovaDeclaracao)
                     noLocal = no;
-
-                no->struc = VARIAVEL;
+                if(no->struc != VALOR){
+                    no->struc = VARIAVEL;
+                }
+                
 
                 flag = no;
             }
