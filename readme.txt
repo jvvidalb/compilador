@@ -40,7 +40,7 @@ linguagem baseada em Python (Mini-Python), desenvolvidas em C puro:
   - Chamadas a funções como input são ignoradas na verificação de tipos.
   - Implementamos um mini escopo como exceção ao escopo global: ao encontrar uma estrutura de controle (if, while, for), a próxima linha passa a ser tratada como corpo do bloco.
   - Caso uma variável seja declarada dentro desse bloco, ela é registrada como noLocal.
-  - Ao sair do bloco, esse conceito de acessível e inacessível entra em ação: a variável declarada localmente se torna inacessível — como se deixasse de existir — mas pode ser sobrescrita por uma nova declaração externa.  - ignora funções como input 
+  - Ao sair do bloco, esse conceito de acessível e inacessível entra em ação: a variável declarada localmente se torna inacessível — como se deixasse de existir — mas pode ser sobrescrita por uma nova declaração externa. 
   - No caso do for, o iterador i é presumido como INTEIRO e marcado como ITERATIVO durante o bloco; ao término, torna-se inacessível.
 
 * Tabela de símbolos:
