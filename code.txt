@@ -7,7 +7,7 @@ tesao = [ 1 , 2 ]
 horny = ( True , False )
 g + a
 if a >= b :
-    print ( " " )
+    print ( a )
 
 if a == b :
     print ( " " )
@@ -32,9 +32,11 @@ b = b + 5
 contador = 0
 limite = 5
 
+i = 0
 for i in range ( 10 ) :
-    t = 1
-    
+    contador = 1
+a = i
+
 for j in range ( 15 ) :
     print ( j )
 

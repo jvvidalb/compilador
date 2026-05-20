@@ -26,6 +26,30 @@ linguagem baseada em Python (Mini-Python), desenvolvidas em C puro:
   - Reconhecimento de comandos de linha única (Statements: print, 
     break, continue, return, exec, raise) e funções integradas que 
     retornam valor (Terms: len, input).
+  
+* Analisador Semantico:
+  - Utilizamos uma estrutura FIFO (First-In First-Out), ou seja, uma fila, para auxiliar o processo de análise.
+  - A escolha dessa estrutura reflete a forma natural de leitura do código: da esquerda para a direita.
+  - Como o analisador sintático já garantiu que não há erros estruturais, o semântico assume essa etapa concluída e processa cada linha em busca de significado, separando a lógica em lado esquerdo e lado direito da expressão.
+  - O processo semântico se inicia quando o sintático consome um token e o enfileira para o semântico.
+  - Ao término da linha, com a análise sintática confirmada, o analisador semântico começa a desenfileirar os tokens.
+  - Utilizamos uma flag para referenciar o nó do lado esquerdo da atribuição (ou o escopo local vigente).
+  - Por se tratar de uma linguagem não tipada, a variável do lado esquerdo é registrada inicialmente como NAO_DEFINIDO, aguardando a avaliação do lado direito. 
+  - A lógica de lados funciona da seguinte forma: o lado esquerdo é definido pelo lado direito. Por exemplo, em x = 5: x recebe o estado NAO_DEFINIDO e a flag aponta para ele; ao encontrar =, o modo muda para lado direito; ao encontrar 5, o tipo INTEIRO é propagado para a flag.
+  - Toda expressão do lado direito é verificada para garantir que todos os operandos possuam o mesmo tipo — mistura de tipos ou uso de variáveis não definidas gera erro. 
+  - Chamadas a funções como input são ignoradas na verificação de tipos.
+  - Implementamos um mini escopo como exceção ao escopo global: ao encontrar uma estrutura de controle (if, while, for), a próxima linha passa a ser tratada como corpo do bloco.
+  - Caso uma variável seja declarada dentro desse bloco, ela é registrada como noLocal.
+  - Ao sair do bloco, esse conceito de acessível e inacessível entra em ação: a variável declarada localmente se torna inacessível — como se deixasse de existir — mas pode ser sobrescrita por uma nova declaração externa.  - ignora funções como input 
+  - No caso do for, o iterador i é presumido como INTEIRO e marcado como ITERATIVO durante o bloco; ao término, torna-se inacessível.
+
+* Tabela de símbolos:
+  - Como descrito na análise semântica, o único caso de escopo restrito é o mini escopo das estruturas de controle. 
+  - Por isso, não faz sentido criar tabelas de símbolos separadas por bloco, o que apenas aumentaria a complexidade com ponteiros adicionais
+  - Por se tratar de uma linguagem com muitas restrições — especialmente a regra de que toda variável, uma vez atribuída, deve sempre receber o mesmo tipo — uma única tabela de símbolos global é suficiente para atender a todos os casos.
+  - Esses fatores levaram à decisão de implementar uma única tabela de símbolos global, sem necessidade de estrutura em pilha.
+
+
 
 2. COMO EXECUTAR O CÓDIGO
 --------------------------------------------------------------------

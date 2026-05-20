@@ -1194,10 +1194,27 @@ void analisadorSemantico()
                 TNo *noIter = encontrarSimbolo(nodoVar->token.lexema);
                 if (noIter != NULL)
                 {
+                    // CASO INVALIDO: variavel ja declarada com tipo incompativel (ex: i = True, for i ...)
+                    if (noIter->tipo != UNKNOWN && noIter->tipo != NAO_DEFINIDO && noIter->tipo != INTEIRO)
+                    {
+                        printf("[ERRO SEMANTICO - LINHA %d] Variavel '%s' ja declarada como %s, nao pode ser usada como iterador (requer INTEIRO).\n",
+                               nodoVar->token.linha, noIter->cadeia, tipoDadoParaString(noIter->tipo));
+                        exit(1);
+                    }
+
+                    // CASO ACESSIVEL: variavel ja era INTEIRO antes do for — mantem acessivel apos o loop
+                    // Marcamos com struc = ITERATIVO apenas se era UNKNOWN/NAO_DEFINIDO (nova declaracao do for)
+                    int jaEraInteiroExterno = (noIter->tipo == INTEIRO && noIter->temp == ACESSIVEL);
+
                     noIter->tipo = INTEIRO;
-                    noIter->struc = ITERATIVO;
                     noIter->temp = ACESSIVEL;
-                    noIter->endereco = end++;
+                    if (!jaEraInteiroExterno)
+                    {
+                        // Declarada pelo proprio for: invalida apos o bloco
+                        noIter->struc = ITERATIVO;
+                        noIter->endereco = end++;
+                    }
+                    // Se ja era INTEIRO externo, mantem struc = VARIAVEL e nao invalida apos o bloco
                 }
             }
         }
@@ -1259,7 +1276,6 @@ void analisadorSemantico()
 
     tipoUltimaExpressao = UNKNOWN;
 }
-
 
 void possuiVarNaoUtilizada()
 {
