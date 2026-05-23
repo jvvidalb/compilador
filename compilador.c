@@ -1455,6 +1455,28 @@ void consome(TAtomo tipo_esperado, const char *lexema_esperado)
     }
 }
 
+//Implementacao da geracao de codigo intermediario (PILHA DE PILHAS)
+
+int temp_counter = 1;
+int rotulo_counter = 1;
+FILE *code_output = NULL; // O PDF pede para salvar em um arquivo .txt
+
+// Gera uma nova variável temporária (t1, t2, t3...)
+void novo_temp(char *buffer) {
+    sprintf(buffer, "t%d", temp_counter++);
+}
+
+// Gera um novo rótulo (L1, L2, L3...) conforme exigido pelo PDF
+void proximo_rotulo(char *buffer) {
+    sprintf(buffer, "L%d", rotulo_counter++);
+}
+
+// Função para emitir código para o arquivo texto
+void emitir(const char *instrucao) {
+    fprintf(code_output, "%s\n", instrucao);
+    // printf("%s\n", instrucao); // Para debugar no console
+}
+
 // FIRST(STATEMENT)
 int in_F_STMT()
 {
@@ -1479,7 +1501,6 @@ void STATEMENTS();
 void STATEMENTS_PRIME();
 void STATEMENT();
 void ASSIGN_OR_EXPR();
-void ASSIGN_OR_EXPR_TAIL();
 void IF_STATEMENT();
 void IF_START();
 void IF_TAIL();
@@ -1489,16 +1510,16 @@ void ELIF_STATEMENTS_PRIME();
 void ELIF_TAIL();
 void WHILE_STATEMENT();
 void FOR_STATEMENT();
-void EXPRESSION();
-void EXPRESSION_PRIME();
+char* EXPRESSION();
+char* EXPRESSION_PRIME(char* ladoEsquerdo);
+char* ELEMENTS_OPT();
+char* ELEMENTS_TAIL(char* elementoAnterior);
+void ASSIGN_OR_EXPR_TAIL(char* ladoEsquerdo);
 void COMMAND_STATEMENT();
 void INDEX_OPT();
-void TERM();
+char* TERM();
 void LIST();
 void TUPLE_OR_GROUP();
-void ELEMENTS_OPT();
-void ELEMENTS_TAIL();
-
 // ==============================================================================
 // ANALISADOR SINTÁTICO RECURSIVO DESCENDENTE PREDITIVO
 // ==============================================================================
@@ -1569,47 +1590,63 @@ void STATEMENT()
     }
 }
 
-void ASSIGN_OR_EXPR()
-{
-    // FIRST(ASSIGN_OR_EXPR) = { IDENTIFICADOR, NUMERO, LITERAL, '(' }
-
-    // ASSIGN_OR_EXPR.TYPEDATA = IDENTIFICADOR.TYPEDATA INDEX_OPT.TYPEDATA ASSIGN_OR_EXPR_TAIL.TYPEDATA
-    if (lookahead.tipo == IDENTIFICADOR)
-    {
+void ASSIGN_OR_EXPR() {
+    if (lookahead.tipo == IDENTIFICADOR) {
+        // Correção: Alocação dinâmica para pertencer ao ciclo do 'free()'
+        char* variavelEsq = (char*)malloc(100 * sizeof(char));
+        strcpy(variavelEsq, lookahead.lexema); 
         consome(IDENTIFICADOR, NULL);
-        INDEX_OPT();
-        ASSIGN_OR_EXPR_TAIL();
-    }
-    else if (lookahead.tipo == NUMERO)
-    {
+        
+        INDEX_OPT(); 
+        
+        ASSIGN_OR_EXPR_TAIL(variavelEsq);
+        
+    } else if (lookahead.tipo == NUMERO) {
+        char* num = (char*)malloc(100 * sizeof(char));
+        strcpy(num, lookahead.lexema);
         consome(NUMERO, NULL);
-        EXPRESSION_PRIME();
-    }
-    else if (lookahead.tipo == LITERAL)
-    {
+        
+        // Pega o resultado da expressão e libera para não dar vazamento de memória
+        char* res = EXPRESSION_PRIME(num);
+        if (res != NULL) free(res);
+        
+    } else if (lookahead.tipo == LITERAL) {
+        char* lit = (char*)malloc(100 * sizeof(char));
+        strcpy(lit, lookahead.lexema);
         consome(LITERAL, NULL);
-        EXPRESSION_PRIME();
-    }
-    else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0)
-    {
+        
+        char* res = EXPRESSION_PRIME(lit);
+        if (res != NULL) free(res);
+        
+    } else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0) {
         consome(DELIMITER, "(");
-        EXPRESSION();
+        char* expr = EXPRESSION();
         consome(DELIMITER, ")");
-        EXPRESSION_PRIME();
+        
+        char* res = EXPRESSION_PRIME(expr);
+        if (res != NULL) free(res);
     }
 }
 
-void ASSIGN_OR_EXPR_TAIL()
-{
-    // FIRST(ASSIGN_OR_EXPR_TAIL) = { '=', OPERATOR, EPSILON }
-    if (lookahead.tipo == ATRIBUICAO)
-    {
+void ASSIGN_OR_EXPR_TAIL(char* ladoEsquerdo) {
+    if (lookahead.tipo == ATRIBUICAO) {
         consome(ATRIBUICAO, NULL);
-        EXPRESSION();
-    }
-    else
-    {
-        EXPRESSION_PRIME();
+        
+        char* ladoDireito = EXPRESSION();
+        
+        char instrucao[200];
+        sprintf(instrucao, "%s = %s", ladoEsquerdo, ladoDireito);
+        emitir(instrucao);
+        
+        // Limpa os dois ponteiros após emitir a instrução final
+        if (ladoDireito != NULL) free(ladoDireito);
+        if (ladoEsquerdo != NULL) free(ladoEsquerdo); 
+        
+    } else {
+        // Se era apenas uma expressão "solta" no código (como: "g + a")
+        // O prime resolve, emite os temps e nós apenas limpamos o resultado final
+        char* res = EXPRESSION_PRIME(ladoEsquerdo);
+        if (res != NULL) free(res);
     }
 }
 
@@ -1764,83 +1801,140 @@ void INDEX_OPT()
     // else EPSILON
 }
 
-void EXPRESSION()
-{
-    // FIRST(EXPRESSION) = F_TERM. Deriva: TERM EXPRESSION_PRIME
-    // EXPRESSION.TYPEDATA = TERM.TYPEDATA EXPRESSION_PRIME.TYPEDATA
-    TERM();             // TERM.TYPEDATA
-    EXPRESSION_PRIME(); // EXPRESSION_PRIME.TYPEDATA
+char* EXPRESSION() {
+    char* termo_esq = TERM(); // Ex: Pega "a"
+    char* resultado = EXPRESSION_PRIME(termo_esq); // Avalia se tem "+ b"
+    return resultado;
 }
 
-void EXPRESSION_PRIME()
-{
-    // FIRST(EXPRESSION_PRIME) = { OPERATOR, EPSILON }. FOLLOW(EXPRESSION_PRIME) = FL_STMT U { ':', ')', ']', ',' }
-    if (lookahead.tipo == OP_ARITMETICO || lookahead.tipo == OP_RELACIONAL)
-    {
+char* EXPRESSION_PRIME(char* ladoEsquerdo) {
+    if (lookahead.tipo == OP_ARITMETICO || lookahead.tipo == OP_RELACIONAL) {
+        char op[10];
+        strcpy(op, lookahead.lexema); // Salva o operador (+, -, *, <)
         consome(lookahead.tipo, NULL);
-        TERM();
-        EXPRESSION_PRIME();
+        
+        // Avalia quem é o lado direito da operação
+        char* ladoDireito = TERM();
+        
+        // Aloca espaço para a nova variável temporária
+        char* temp = (char*)malloc(100 * sizeof(char));
+        novo_temp(temp); // Gera "t1", "t2", etc.
+        
+        // GERA CÓDIGO INTERMEDIÁRIO! (Ex: "t1 = a + b")
+        char instrucao[200];
+        sprintf(instrucao, "%s = %s %s %s", temp, ladoEsquerdo, op, ladoDireito);
+        emitir(instrucao);
+        
+        // Libera a memória usada pelos operandos anteriores
+        if (ladoEsquerdo != NULL) free(ladoEsquerdo);
+        if (ladoDireito != NULL) free(ladoDireito);
+        
+        // RECURSÃO: O temporário recém-criado vira o "lado esquerdo" da próxima conta!
+        // Isso resolve contas longas: a + b + c -> t1 = a + b -> t2 = t1 + c
+        return EXPRESSION_PRIME(temp);
     }
+    
     // else EPSILON
+    // Se não tem operador matemático, a expressão acabou. Retorna o que recebeu.
+    return ladoEsquerdo;
 }
 
-void TERM()
-{
-    // FIRST(TERM) = F_TERM = { IDENTIFICADOR, NUMERO, LITERAL, TRUE, FALSE, '[', '(', len, input }
-    /*
-    TERM.TYPEDATA = IDENTIFICADOR.TYPEDATA INDEX_OPT.TYPEDATA
-    TERM.INTEIRO = NUMERO.INTEIRO
-    TERM.BOOLEANO = TRUE.BOOLEANO
-    TERM.BOOLEANO = FALSE.BOOLEANO
-    TERM.TYPEDATA = LIST.TYPEDATA
-    TERM.TYPEDATA = TUPLE_OR_GROUP.TYPEDATA
-    */
-    if (lookahead.tipo == IDENTIFICADOR)
-    {
+// Agora a função retorna um char* representando a variável ou o temporário 'tX' gerado
+char* TERM() {
+    // Alocamos memória dinamicamente para suportar recursões profundas (ex: parênteses aninhados)
+    char* resultado = (char*)malloc(100 * sizeof(char));
+    
+    if (lookahead.tipo == IDENTIFICADOR) {
+        strcpy(resultado, lookahead.lexema);
         consome(IDENTIFICADOR, NULL);
-        INDEX_OPT(); // INDEX_OPT.TYPEDATA
-    }
-    else if (lookahead.tipo == NUMERO)
-    {
+        
+        // Se houver um índice (ex: vetor[i]), no futuro você emitirá algo como: t1 = vetor[i]
+        INDEX_OPT(); 
+        return resultado;
+        
+    } else if (lookahead.tipo == NUMERO) {
+        strcpy(resultado, lookahead.lexema);
         consome(NUMERO, NULL);
-    }
-    else if (lookahead.tipo == LITERAL)
-    {
+        return resultado;
+        
+    } else if (lookahead.tipo == LITERAL) {
+        strcpy(resultado, lookahead.lexema);
         consome(LITERAL, NULL);
-    }
-    else if (lookahead.tipo == T_TRUE)
-    {
+        return resultado;
+        
+    } else if (lookahead.tipo == T_TRUE) {
+        strcpy(resultado, "True");
         consome(T_TRUE, NULL);
-    }
-    else if (lookahead.tipo == T_FALSE)
-    {
+        return resultado;
+        
+    } else if (lookahead.tipo == T_FALSE) {
+        strcpy(resultado, "False");
         consome(T_FALSE, NULL);
-    }
-    else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "[") == 0)
-    {
-        LIST(); // TERM.TYPEDATA = LIST.TYPEDATA
-    }
-    else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0)
-    {
-        TUPLE_OR_GROUP(); // TUPLE_OR_GROUP.TYPEDATA
-    }
-    else if (lookahead.tipo == T_LEN)
-    {
+        return resultado;
+        
+    } else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "[") == 0) {
+        consome(DELIMITER, "[");
+        ELEMENTS_OPT(); // Futuramente adaptado para processar itens da lista
+        consome(DELIMITER, "]");
+        
+        // Na geração de código, criar uma lista geralmente aloca um ponteiro temporário
+        novo_temp(resultado); 
+        return resultado;
+        
+    } else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0) {
+        // Substituímos a chamada pura de TUPLE_OR_GROUP() pela lógica embutida
+        // para podermos capturar o retorno da expressão matemática interna.
+        consome(DELIMITER, "(");
+        
+        // Avalia a expressão dentro dos parênteses (ex: a + b gera t1).
+        // Nota: ELEMENTS_OPT precisará ser alterado para retornar char* também!
+        char* temp = ELEMENTS_OPT(); 
+        
+        strcpy(resultado, temp);
+        free(temp); // Libera o ponteiro da chamada filha para não vazar memória
+        
+        consome(DELIMITER, ")");
+        return resultado;
+        
+    } else if (lookahead.tipo == T_LEN) {
         consome(T_LEN, NULL);
         consome(DELIMITER, "(");
-        EXPRESSION();
+        
+        // Avalia o que está dentro da função len()
+        char* temp_expr = EXPRESSION(); 
         consome(DELIMITER, ")");
-    }
-    else if (lookahead.tipo == T_INPUT)
-    {
+        
+        // GERAÇÃO DE CÓDIGO INTERMEDIÁRIO: tX = len(temp_expr)
+        novo_temp(resultado);
+        char instrucao[100];
+        sprintf(instrucao, "%s = len(%s)", resultado, temp_expr);
+        emitir(instrucao);
+        
+        free(temp_expr);
+        return resultado;
+        
+    } else if (lookahead.tipo == T_INPUT) {
         consome(T_INPUT, NULL);
         consome(DELIMITER, "(");
+        
+        // Pega a string usada de prompt no input
+        char literal_str[100];
+        strcpy(literal_str, lookahead.lexema); 
         consome(LITERAL, NULL);
+        
         consome(DELIMITER, ")");
-    }
-    else
-    {
+        
+        // GERAÇÃO DE CÓDIGO INTERMEDIÁRIO: tX = input("...")
+        novo_temp(resultado);
+        char instrucao[100];
+        sprintf(instrucao, "%s = input(%s)", resultado, literal_str);
+        emitir(instrucao);
+        
+        return resultado;
+        
+    } else {
         erroSintatico("Esperado um TERM (Identificador, Numero, String, Tupla, Lista, etc)");
+        return NULL;
     }
 }
 
@@ -1861,27 +1955,35 @@ void TUPLE_OR_GROUP()
     consome(DELIMITER, ")");
 }
 
-void ELEMENTS_OPT()
-{
-    // FIRST(ELEMENTS_OPT) = F_TERM U { EPSILON }. FOLLOW(ELEMENTS_OPT) = { ']', ')' }
-    if (in_F_TERM())
-    {
-        EXPRESSION();
-        ELEMENTS_TAIL();
+char* ELEMENTS_OPT() {
+    if (in_F_TERM()) {
+        // Processa o primeiro argumento
+        char* expr = EXPRESSION();
+        
+        // Manda o resultado para a cauda (para verificar se há vírgulas)
+        return ELEMENTS_TAIL(expr);
     }
+    
     // else EPSILON
+    char* vazio = (char*)malloc(2 * sizeof(char));
+    strcpy(vazio, "");
+    return vazio;
 }
 
-void ELEMENTS_TAIL()
-{
-    // FIRST(ELEMENTS_TAIL) = { ',', EPSILON }. FOLLOW(ELEMENTS_TAIL) = { ']', ')' }
-    if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, ",") == 0)
-    {
+char* ELEMENTS_TAIL(char* elementoAnterior) {
+    if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, ",") == 0) {
         consome(DELIMITER, ",");
-        EXPRESSION();
-        ELEMENTS_TAIL();
+        
+        // Opcional: Aqui você emitiria algo como "param t1" se fossem funções reais
+        // Mas por enquanto, apenas garantimos a geração de código do próximo argumento
+        char* prox_expr = EXPRESSION();
+        
+        // Propaga o fluxo processando recursivamente as próximas vírgulas
+        return ELEMENTS_TAIL(prox_expr);
     }
+    
     // else EPSILON
+    return elementoAnterior;
 }
 
 int main(int argc, char **argv)
@@ -1915,8 +2017,17 @@ int main(int argc, char **argv)
     {
         printf("===== INICIANDO ANALISE LEXICASIN, SINTATICA E SEMANTICA =====\n");
 
+        // 2. ABRE O ARQUIVO DE SAÍDA PARA O CÓDIGO INTERMEDIÁRIO
+        code_output = fopen("codigo_intermediario.txt", "w");
+        if (code_output == NULL) {
+            printf("Erro ao criar o arquivo de codigo intermediario.\n");
+            return 1;
+        }
+
         // Inicia a análise sintática
         analisadorSintatico();
+
+        fclose(code_output); // Fecha o arquivo de código intermediário após a análise
 
         printf("\n> SUCESSO: Analise Sintatica concluida! A gramatica do arquivo eh valida.\n");
         printTabelaSimbolos();

@@ -3,8 +3,8 @@ z = False
 a = 10 + 5 + 4126 * 15 / 2 - ( 50 - 25 ) * 50
 b = a + 300 * 5
 g = 5
-tesao = [ 1 , 2 ]
-horny = ( True , False )
+list1 = [ 1 , 2 ]
+tuple1 = ( True , False )
 g + a
 if a >= b :
     print ( a )
