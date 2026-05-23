@@ -1,0 +1,35 @@
+x = True
+z = False
+t1 = 10 + 5
+t2 = t1 + 4126
+t3 = t2 * 15
+t4 = t3 / 2
+t5 = 50 - 25
+t6 = t4 - t5
+t7 = t6 * 50
+a = t7
+t8 = a + 300
+t9 = t8 * 5
+b = t9
+g = 5
+list1 = t10
+tuple1 = False
+t11 = g + a
+t12 = a >= b
+t13 = a == b
+t14 = a <= b
+t15 = a < b
+t16 = a > b
+t17 = x == z
+t18 = x != z
+t19 = a + 5
+a = t19
+t20 = b + 5
+b = t20
+contador = 0
+limite = 5
+i = 0
+contador = 1
+a = i
+t21 = contador < limite
+t22 = contador >= 0
