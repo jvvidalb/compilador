@@ -1,5 +1,5 @@
-x = True
-z = False
+x = 1
+z = 0
 t1 = 10 + 5
 t2 = t1 + 4126
 t3 = t2 * 15
@@ -12,24 +12,70 @@ t8 = a + 300
 t9 = t8 * 5
 b = t9
 g = 5
-list1 = t10
-tuple1 = False
-t11 = g + a
-t12 = a >= b
-t13 = a == b
-t14 = a <= b
-t15 = a < b
-t16 = a > b
-t17 = x == z
-t18 = x != z
-t19 = a + 5
-a = t19
-t20 = b + 5
-b = t20
+list1 = 0
+tuple1 = 1
+t10 = g + a
+t11 = a >= b
+ifFalse t11 goto L1
+L1:
+t12 = a == b
+ifFalse t12 goto L2
+L2:
+t13 = a <= b
+ifFalse t13 goto L3
+L3:
+t14 = a < b
+ifFalse t14 goto L4
+L4:
+t15 = a > b
+ifFalse t15 goto L5
+L5:
+t16 = x == z
+ifFalse t16 goto L6
+L6:
+t17 = x != z
+ifFalse t17 goto L7
+L7:
+t18 = a + 5
+a = t18
+t19 = b + 5
+b = t19
 contador = 0
 limite = 5
 i = 0
+i = 0
+L8:
+t20 = i < 10
+ifFalse t20 goto L9
 contador = 1
+t21 = i + 1
+i = t21
+goto L8
+L9:
 a = i
-t21 = contador < limite
-t22 = contador >= 0
+j = 0
+L10:
+t22 = j < 15
+ifFalse t22 goto L11
+t23 = j + 1
+j = t23
+goto L10
+L11:
+k = 0
+L12:
+t24 = k < 2
+ifFalse t24 goto L13
+t25 = k + 1
+k = t25
+goto L12
+L13:
+L14:
+t26 = contador < limite
+ifFalse t26 goto L15
+goto L14
+L15:
+L16:
+t27 = contador >= 0
+ifFalse t27 goto L17
+goto L16
+L17:
