@@ -525,7 +525,7 @@ void adicionarSimbolo(char *lexema, TAtomo tipo)
     novo->temp = ACESSIVEL;
     novo->struc = VARIAVEL;
     novo->usado = 0;
-    novo->endereco = 0;
+    novo->endereco = -1; // Endereço indefinido inicialmente
     globalTabela.totalSimbolos++;
 
     novo->prox = NULL;
@@ -1455,7 +1455,7 @@ void consome(TAtomo tipo_esperado, const char *lexema_esperado)
     }
 }
 
-//Implementacao da geracao de codigo intermediario (PILHA DE PILHAS)
+//Funcoes auxiliares da geracao de codigo intermediario
 
 int temp_counter = 1;
 int rotulo_counter = 1;
@@ -1474,7 +1474,7 @@ void proximo_rotulo(char *buffer) {
 // Função para emitir código para o arquivo texto
 void emitir(const char *instrucao) {
     fprintf(code_output, "%s\n", instrucao);
-    // printf("%s\n", instrucao); // Para debugar no console
+    //printf("%s\n", instrucao); 
 }
 
 // FIRST(STATEMENT)
