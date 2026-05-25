@@ -48,7 +48,7 @@ for k in range ( 2 ) :
 
 
 while contador < limite :
-    print ( contador )
+print ( contador )
 
 while contador >= 0 :
     print ( contador )

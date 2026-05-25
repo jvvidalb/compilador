@@ -265,22 +265,22 @@ typedef struct
 } Token;
 ;
 
-typedef struct NodoFila
+typedef struct NodeFila
 {
     Token token;
-    struct NodoFila *proximo;
-} NodoFila;
+    struct NodeFila *proximo;
+} NodeFila;
 
 typedef struct
 {
-    NodoFila *head;
-    NodoFila *tail;
+    NodeFila *head;
+    NodeFila *tail;
 } FilaSemantica;
 
 // Funções auxiliares
 void enfileirar(FilaSemantica *fila, Token t)
 {
-    NodoFila *novo = (NodoFila *)malloc(sizeof(NodoFila));
+    NodeFila *novo = (NodeFila *)malloc(sizeof(NodeFila));
     novo->token = t;
     novo->proximo = NULL;
     if (fila->tail == NULL)
@@ -301,7 +301,7 @@ Token desenfileirar(FilaSemantica *fila)
         printf("[ERRO] Fila vazia!\n");
         exit(1);
     }
-    NodoFila *aux = fila->head;
+    NodeFila *aux = fila->head;
     Token t = aux->token;
     fila->head = aux->proximo;
     if (fila->head == NULL)
@@ -310,9 +310,9 @@ Token desenfileirar(FilaSemantica *fila)
     return t;
 }
 
-NodoFila *buscarNaFila(FilaSemantica *fila, char *lexema)
+NodeFila *buscarNaFila(FilaSemantica *fila, char *lexema)
 {
-    NodoFila *atual = fila->head;
+    NodeFila *atual = fila->head;
     while (atual != NULL)
     {
         if (strcmp(atual->token.lexema, lexema) == 0)
@@ -1054,8 +1054,8 @@ void analisadorSemantico()
     int ladoDireitoVazio = 0;
     if (temAtribuicao)
     {
-        NodoFila *n = filaSemantica.head;
-        NodoFila *ultimo = NULL;
+        NodeFila *n = filaSemantica.head;
+        NodeFila *ultimo = NULL;
         while (n != NULL)
         {
             ultimo = n;
@@ -1228,7 +1228,7 @@ void analisadorSemantico()
             proxLine = 1;
             ladoDireito = 1;
 
-            NodoFila *nodoVar = filaSemantica.head;
+            NodeFila *nodoVar = filaSemantica.head;
             if (nodoVar != NULL && nodoVar->token.tipo == IDENTIFICADOR)
             {
                 TNo *noIter = encontrarSimbolo(nodoVar->token.lexema);
@@ -1524,34 +1524,35 @@ typedef enum
     NODE_IF,
     NODE_WHILE,
     NODE_FOR,
+    NODE_PRINT,
     NODE_IGNORAR
 } NodeType;
 
-typedef struct ASTNode
+typedef struct DAGnode
 {
     NodeType type;
     char lexema[100];
-    struct ASTNode *esq;
-    struct ASTNode *dir;
-    struct ASTNode *body_else;
-    struct ASTNode *prox;
-} ASTNode;
+    struct DAGnode *esq;
+    struct DAGnode *dir;
+    struct DAGnode *body_else;
+    struct DAGnode *prox;
+} DAGnode;
 
-ASTNode *criarNo(NodeType type, const char *lexema)
+DAGnode *criarNo(NodeType type, const char *lexema)
 {
-    ASTNode *no = (ASTNode *)calloc(1, sizeof(ASTNode));
+    DAGnode *no = (DAGnode *)calloc(1, sizeof(DAGnode));
     no->type = type;
     if (lexema)
         strcpy(no->lexema, lexema);
     return no;
 }
 
-char *gerarCodigoIntermediario(ASTNode *no)
+char *gerarCodigoIntermediario(DAGnode *no)
 {
     if (no == NULL)
         return NULL;
 
-    ASTNode *atual = no;
+    DAGnode *atual = no;
     char *last_val = NULL; // Armazena o último valor gerado (ex: t1, t2)
 
     while (atual != NULL)
@@ -1644,6 +1645,43 @@ char *gerarCodigoIntermediario(ASTNode *no)
             emitir(inst);
             free(index);
             free(val_dir);
+        }
+        else if (atual->type == NODE_PRINT)
+        {
+            int num_params = 0;
+            DAGnode *arg = atual->dir;
+
+            /* Primeiro passo: avalia cada argumento, gera seus temporários e
+             * emite as instruções "param <valor>" em ordem. */
+            while (arg != NULL)
+            {
+                /* Precisamos avaliar o argumento sem avançar o ponteiro 'arg->prox',
+                 * pois gerarCodigoIntermediario percorre a lista via ->prox.
+                 * Salvamos e zeramos ->prox temporariamente para avaliar apenas este nó. */
+                DAGnode *saved_prox = arg->prox;
+                arg->prox = NULL;
+
+                char *val = gerarCodigoIntermediario(arg);
+                if (!val)
+                {
+                    val = (char *)malloc(2);
+                    strcpy(val, "0");
+                }
+
+                char inst[200];
+                sprintf(inst, "param %s", val);
+                emitir(inst);
+                free(val);
+
+                num_params++;
+                arg->prox = saved_prox; // restaura a cadeia
+                arg = saved_prox;
+            }
+
+            /* Segundo passo: emite a chamada de procedimento com o número de parâmetros */
+            char inst[200];
+            sprintf(inst, "call print, %d", num_params);
+            emitir(inst);
         }
         // ==========================================================
         // FLUXO DE CONTROLE (IF, WHILE, FOR) - AGORA ELES SERÃO LIDOS!
@@ -1779,24 +1817,24 @@ int in_F_TERM()
             lookahead.tipo == T_LEN || lookahead.tipo == T_INPUT);
 }
 
-ASTNode *START();
-ASTNode *STATEMENTS();
-ASTNode *STATEMENTS_PRIME();
-ASTNode *STATEMENT();
-ASTNode *ASSIGN_OR_EXPR();
-ASTNode *ASSIGN_OR_EXPR_TAIL(char *ladoEsquerdo, ASTNode *index);
-ASTNode *IF_STATEMENT();
-ASTNode *IF_START();
-void IF_TAIL(ASTNode *no_if);
-ASTNode *ELIF_STATEMENTS();
-void ELIF_TAIL(ASTNode *no_elif);
-ASTNode *WHILE_STATEMENT();
-ASTNode *FOR_STATEMENT();
-ASTNode *EXPRESSION();
-ASTNode *EXPRESSION_PRIME(ASTNode *ladoEsquerdo);
-ASTNode *TERM();
-ASTNode *COMMAND_STATEMENT();
-ASTNode *INDEX_OPT();
+DAGnode *START();
+DAGnode *STATEMENTS();
+DAGnode *STATEMENTS_PRIME();
+DAGnode *STATEMENT();
+DAGnode *ASSIGN_OR_EXPR();
+DAGnode *ASSIGN_OR_EXPR_TAIL(char *ladoEsquerdo, DAGnode *index);
+DAGnode *IF_STATEMENT();
+DAGnode *IF_START();
+void IF_TAIL(DAGnode *no_if);
+DAGnode *ELIF_STATEMENTS();
+void ELIF_TAIL(DAGnode *no_elif);
+DAGnode *WHILE_STATEMENT();
+DAGnode *FOR_STATEMENT();
+DAGnode *EXPRESSION();
+DAGnode *EXPRESSION_PRIME(DAGnode *ladoEsquerdo);
+DAGnode *TERM();
+DAGnode *COMMAND_STATEMENT();
+DAGnode *INDEX_OPT();
 void LIST();
 void TUPLE_OR_GROUP();
 void ELEMENTS_OPT();
@@ -1805,7 +1843,7 @@ void ELEMENTS_TAIL();
 // ANALISADOR SINTÁTICO RECURSIVO DESCENDENTE PREDITIVO
 // ==============================================================================
 
-ASTNode *raizPrograma = NULL;
+DAGnode *raizPrograma = NULL;
 
 void analisadorSintatico()
 {
@@ -1814,17 +1852,17 @@ void analisadorSintatico()
     raizPrograma = START();
 }
 
-ASTNode *START()
+DAGnode *START()
 {
-    ASTNode *raiz = STATEMENTS();
+    DAGnode *raiz = STATEMENTS();
     consome(EOS, NULL);
     return raiz;
 }
 
-ASTNode *STATEMENTS()
+DAGnode *STATEMENTS()
 {
-    ASTNode *primeiro = STATEMENT();
-    ASTNode *resto = STATEMENTS_PRIME();
+    DAGnode *primeiro = STATEMENT();
+    DAGnode *resto = STATEMENTS_PRIME();
 
     if (primeiro != NULL)
     {
@@ -1834,7 +1872,7 @@ ASTNode *STATEMENTS()
     return resto;
 }
 
-ASTNode *STATEMENTS_PRIME()
+DAGnode *STATEMENTS_PRIME()
 {
     if (in_F_STMT())
     {
@@ -1843,7 +1881,7 @@ ASTNode *STATEMENTS_PRIME()
     return NULL; // EPSILON
 }
 
-ASTNode *STATEMENT()
+DAGnode *STATEMENT()
 {
     if (lookahead.tipo == T_IF)
     {
@@ -1877,7 +1915,7 @@ ASTNode *STATEMENT()
     }
 }
 
-ASTNode *ASSIGN_OR_EXPR()
+DAGnode *ASSIGN_OR_EXPR()
 {
     if (lookahead.tipo == IDENTIFICADOR)
     {
@@ -1886,42 +1924,42 @@ ASTNode *ASSIGN_OR_EXPR()
         consome(IDENTIFICADOR, NULL);
 
         // Verifica se há acesso a vetor (ex: x[i])
-        ASTNode *index = INDEX_OPT();
+        DAGnode *index = INDEX_OPT();
         return ASSIGN_OR_EXPR_TAIL(id_lexema, index);
     }
     else if (lookahead.tipo == NUMERO)
     {
-        ASTNode *num = criarNo(NODE_NUMERO, lookahead.lexema);
+        DAGnode *num = criarNo(NODE_NUMERO, lookahead.lexema);
         consome(NUMERO, NULL);
         return EXPRESSION_PRIME(num);
     }
     else if (lookahead.tipo == LITERAL)
     {
-        ASTNode *lit = criarNo(NODE_VARIAVEL, lookahead.lexema);
+        DAGnode *lit = criarNo(NODE_VARIAVEL, lookahead.lexema);
         consome(LITERAL, NULL);
         return EXPRESSION_PRIME(lit);
     }
     else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0)
     {
         consome(DELIMITER, "(");
-        ASTNode *expr = EXPRESSION();
+        DAGnode *expr = EXPRESSION();
         consome(DELIMITER, ")");
         return EXPRESSION_PRIME(expr);
     }
     return NULL;
 }
 
-ASTNode *ASSIGN_OR_EXPR_TAIL(char *ladoEsquerdo, ASTNode *index)
+DAGnode *ASSIGN_OR_EXPR_TAIL(char *ladoEsquerdo, DAGnode *index)
 {
     if (lookahead.tipo == ATRIBUICAO)
     {
         consome(ATRIBUICAO, NULL);
-        ASTNode *valDir = EXPRESSION();
+        DAGnode *valDir = EXPRESSION();
 
         if (index != NULL)
         {
             // Atribuição Indexada: x[i] = y
-            ASTNode *noAtribIdx = criarNo(NODE_ATRIBUICAO_INDEXADA, ladoEsquerdo);
+            DAGnode *noAtribIdx = criarNo(NODE_ATRIBUICAO_INDEXADA, ladoEsquerdo);
             noAtribIdx->esq = index;
             noAtribIdx->dir = valDir;
             return noAtribIdx;
@@ -1929,7 +1967,7 @@ ASTNode *ASSIGN_OR_EXPR_TAIL(char *ladoEsquerdo, ASTNode *index)
         else
         {
             // Cópia Normal: x = y
-            ASTNode *noAtrib = criarNo(NODE_ATRIBUICAO, ladoEsquerdo);
+            DAGnode *noAtrib = criarNo(NODE_ATRIBUICAO, ladoEsquerdo);
             noAtrib->dir = valDir;
             return noAtrib;
         }
@@ -1937,7 +1975,7 @@ ASTNode *ASSIGN_OR_EXPR_TAIL(char *ladoEsquerdo, ASTNode *index)
     else
     {
         // Apenas expressão matemática
-        ASTNode *noEsq;
+        DAGnode *noEsq;
         if (index != NULL)
         {
             // Leitura indexada: t1 = y[i]
@@ -1953,15 +1991,15 @@ ASTNode *ASSIGN_OR_EXPR_TAIL(char *ladoEsquerdo, ASTNode *index)
     }
 }
 
-ASTNode *IF_STATEMENT()
+DAGnode *IF_STATEMENT()
 {
     return IF_START();
 }
 
-ASTNode *IF_START()
+DAGnode *IF_START()
 {
     consome(T_IF, NULL);
-    ASTNode *no_if = criarNo(NODE_IF, "if");
+    DAGnode *no_if = criarNo(NODE_IF, "if");
     no_if->esq = EXPRESSION();
     consome(DELIMITER, ":");
     no_if->dir = STATEMENT();
@@ -1969,7 +2007,7 @@ ASTNode *IF_START()
     return no_if;
 }
 
-void IF_TAIL(ASTNode *no_if)
+void IF_TAIL(DAGnode *no_if)
 {
     if (lookahead.tipo == T_ELSE)
     {
@@ -1984,9 +2022,9 @@ void IF_TAIL(ASTNode *no_if)
     // else EPSILON
 }
 
-ASTNode *ELIF_STATEMENTS()
+DAGnode *ELIF_STATEMENTS()
 {
-    ASTNode *no_elif = criarNo(NODE_IF, "elif");
+    DAGnode *no_elif = criarNo(NODE_IF, "elif");
     consome(T_ELIF, NULL);
     no_elif->esq = EXPRESSION();
     consome(DELIMITER, ":");
@@ -1995,7 +2033,7 @@ ASTNode *ELIF_STATEMENTS()
     return no_elif;
 }
 
-void ELIF_TAIL(ASTNode *no_elif)
+void ELIF_TAIL(DAGnode *no_elif)
 {
     if (lookahead.tipo == T_ELSE)
     {
@@ -2010,17 +2048,17 @@ void ELIF_TAIL(ASTNode *no_elif)
     // else EPSILON
 }
 
-ASTNode *WHILE_STATEMENT()
+DAGnode *WHILE_STATEMENT()
 {
     consome(T_WHILE, NULL);
-    ASTNode *no_while = criarNo(NODE_WHILE, "while");
+    DAGnode *no_while = criarNo(NODE_WHILE, "while");
     no_while->esq = EXPRESSION();
     consome(DELIMITER, ":");
     no_while->dir = STATEMENT();
     return no_while;
 }
 
-ASTNode *FOR_STATEMENT()
+DAGnode *FOR_STATEMENT()
 {
     consome(T_FOR, NULL);
     char id_iterador[100];
@@ -2030,7 +2068,7 @@ ASTNode *FOR_STATEMENT()
     consome(T_RANGE, NULL);
     consome(DELIMITER, "(");
 
-    ASTNode *no_for = criarNo(NODE_FOR, id_iterador);
+    DAGnode *no_for = criarNo(NODE_FOR, id_iterador);
     no_for->esq = EXPRESSION();
 
     consome(DELIMITER, ")");
@@ -2039,17 +2077,34 @@ ASTNode *FOR_STATEMENT()
     return no_for;
 }
 
-ASTNode *COMMAND_STATEMENT()
+DAGnode *COMMAND_STATEMENT()
 {
-    // Comandos ignorados na Geração de Código de 3-Endereços (não há funções)
+
     if (lookahead.tipo == T_PRINT)
     {
         consome(T_PRINT, NULL);
         consome(DELIMITER, "(");
-        ELEMENTS_OPT();
+        DAGnode *no_print = criarNo(NODE_PRINT, "print");
+        if (in_F_TERM())
+        {
+            DAGnode *arg = EXPRESSION();
+            no_print->dir = arg;
+            DAGnode *ultimo = arg;
+
+            while (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, ",") == 0)
+            {
+                consome(DELIMITER, ",");
+                DAGnode *proximo_arg = EXPRESSION();
+                if (ultimo != NULL)
+                    ultimo->prox = proximo_arg;
+                ultimo = proximo_arg;
+            }
+        }
+
         consome(DELIMITER, ")");
-        return criarNo(NODE_IGNORAR, "print");
+        return no_print;
     }
+    // Comandos ignorados na Geração de Código de 3-Endereços (não há funções)
     else if (lookahead.tipo == T_INPUT)
     {
         consome(T_INPUT, NULL);
@@ -2071,7 +2126,7 @@ ASTNode *COMMAND_STATEMENT()
     else if (lookahead.tipo == T_RETURN)
     {
         consome(T_RETURN, NULL);
-        ASTNode *expr = EXPRESSION();
+        DAGnode *expr = EXPRESSION();
         if (expr)
             free(expr); // Ignora a avaliação para evitar vazamento
         return criarNo(NODE_IGNORAR, "return");
@@ -2079,7 +2134,7 @@ ASTNode *COMMAND_STATEMENT()
     else if (lookahead.tipo == T_EXEC)
     {
         consome(T_EXEC, NULL);
-        ASTNode *expr = EXPRESSION();
+        DAGnode *expr = EXPRESSION();
         if (expr)
             free(expr);
         return criarNo(NODE_IGNORAR, "exec");
@@ -2087,7 +2142,7 @@ ASTNode *COMMAND_STATEMENT()
     else if (lookahead.tipo == T_RAISE)
     {
         consome(T_RAISE, NULL);
-        ASTNode *expr = EXPRESSION();
+        DAGnode *expr = EXPRESSION();
         if (expr)
             free(expr);
         return criarNo(NODE_IGNORAR, "raise");
@@ -2095,12 +2150,12 @@ ASTNode *COMMAND_STATEMENT()
     return NULL;
 }
 
-ASTNode *INDEX_OPT()
+DAGnode *INDEX_OPT()
 {
     if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "[") == 0)
     {
         consome(DELIMITER, "[");
-        ASTNode *exprIndex = EXPRESSION();
+        DAGnode *exprIndex = EXPRESSION();
         consome(DELIMITER, "]");
         INDEX_OPT();
         return exprIndex;
@@ -2108,17 +2163,17 @@ ASTNode *INDEX_OPT()
     return NULL; // EPSILON
 }
 
-ASTNode *EXPRESSION()
+DAGnode *EXPRESSION()
 {
-    ASTNode *termo_esq = TERM();
+    DAGnode *termo_esq = TERM();
     return EXPRESSION_PRIME(termo_esq);
 }
 
-ASTNode *EXPRESSION_PRIME(ASTNode *ladoEsquerdo)
+DAGnode *EXPRESSION_PRIME(DAGnode *ladoEsquerdo)
 {
     if (lookahead.tipo == OP_ARITMETICO || lookahead.tipo == OP_RELACIONAL)
     {
-        ASTNode *noOp = criarNo(NODE_OPERACAO, lookahead.lexema);
+        DAGnode *noOp = criarNo(NODE_OPERACAO, lookahead.lexema);
         consome(lookahead.tipo, NULL);
 
         noOp->esq = ladoEsquerdo;
@@ -2129,7 +2184,7 @@ ASTNode *EXPRESSION_PRIME(ASTNode *ladoEsquerdo)
     return ladoEsquerdo; // EPSILON
 }
 
-ASTNode *TERM()
+DAGnode *TERM()
 {
     if (lookahead.tipo == IDENTIFICADOR)
     {
@@ -2137,10 +2192,10 @@ ASTNode *TERM()
         strcpy(lexema, lookahead.lexema);
         consome(IDENTIFICADOR, NULL);
 
-        ASTNode *index = INDEX_OPT();
+        DAGnode *index = INDEX_OPT();
         if (index != NULL)
         {
-            ASTNode *noIndexGet = criarNo(NODE_INDEX_GET, lexema);
+            DAGnode *noIndexGet = criarNo(NODE_INDEX_GET, lexema);
             noIndexGet->esq = index;
             return noIndexGet;
         }
@@ -2151,25 +2206,25 @@ ASTNode *TERM()
     }
     else if (lookahead.tipo == NUMERO)
     {
-        ASTNode *no = criarNo(NODE_NUMERO, lookahead.lexema);
+        DAGnode *no = criarNo(NODE_NUMERO, lookahead.lexema);
         consome(NUMERO, NULL);
         return no;
     }
     else if (lookahead.tipo == LITERAL)
     {
-        ASTNode *no = criarNo(NODE_VARIAVEL, lookahead.lexema);
+        DAGnode *no = criarNo(NODE_VARIAVEL, lookahead.lexema);
         consome(LITERAL, NULL);
         return no;
     }
     else if (lookahead.tipo == T_TRUE)
     {
-        ASTNode *no = criarNo(NODE_NUMERO, "1"); // Booleano vira numérico
+        DAGnode *no = criarNo(NODE_NUMERO, "1"); // Booleano vira numérico
         consome(T_TRUE, NULL);
         return no;
     }
     else if (lookahead.tipo == T_FALSE)
     {
-        ASTNode *no = criarNo(NODE_NUMERO, "0");
+        DAGnode *no = criarNo(NODE_NUMERO, "0");
         consome(T_FALSE, NULL);
         return no;
     }
@@ -2181,7 +2236,7 @@ ASTNode *TERM()
     else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0)
     {
         consome(DELIMITER, "(");
-        ASTNode *expr = NULL;
+        DAGnode *expr = NULL;
 
         if (in_F_TERM())
         {
@@ -2191,7 +2246,7 @@ ASTNode *TERM()
             while (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, ",") == 0)
             {
                 consome(DELIMITER, ",");
-                ASTNode *extra = EXPRESSION();
+                DAGnode *extra = EXPRESSION();
                 if (extra)
                     free(extra);
             }
@@ -2203,7 +2258,7 @@ ASTNode *TERM()
     {
         consome(T_LEN, NULL);
         consome(DELIMITER, "(");
-        ASTNode *expr = EXPRESSION();
+        DAGnode *expr = EXPRESSION();
         if (expr)
             free(expr); // Ignora a leitura do parâmetro interno no código 3D
         consome(DELIMITER, ")");
@@ -2242,7 +2297,7 @@ void ELEMENTS_OPT()
 {
     if (in_F_TERM())
     {
-        ASTNode *exp = EXPRESSION();
+        DAGnode *exp = EXPRESSION();
         if (exp)
             free(exp); // Previne vazamentos de memória nas coisas ignoradas
         ELEMENTS_TAIL();
@@ -2255,7 +2310,7 @@ void ELEMENTS_TAIL()
     if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, ",") == 0)
     {
         consome(DELIMITER, ",");
-        ASTNode *exp = EXPRESSION();
+        DAGnode *exp = EXPRESSION();
         if (exp)
             free(exp);
         ELEMENTS_TAIL();
