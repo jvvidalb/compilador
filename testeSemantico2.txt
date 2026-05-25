@@ -4,7 +4,8 @@ number2 = 5
 maior1 = False
 maior2 = False
 
-if ( number1 > number2 ) :
+# erro semântico porque é feita comparação entre um inteiro e um booleano
+if ( number1 > maior2 ) :
     maior1 = True
 elif ( number2 > number1 ) :
     maior2 = True

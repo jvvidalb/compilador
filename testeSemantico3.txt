@@ -1,5 +1,7 @@
 number1 = 7
 number2 = 5
+number3 = 3
+# erro semântico porque foi declarado e nunca usado
 
 maior1 = False
 maior2 = False

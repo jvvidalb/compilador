@@ -6,6 +6,8 @@ g = 5
 list1 = [ 1 , 2 ]
 tuple1 = ( True , False )
 g + a
+
+
 if a >= b :
     print ( a )
 
@@ -32,13 +34,14 @@ b = b + 5
 contador = 0
 limite = 5
 
+
 i = 0
 for i in range ( 10 ) :
     contador = 1
 a = i
 
 for j in range ( 15 ) :
-    print ( j )
+    print ( "  " )
 
 for k in range ( 2 ) :
     print ( k )
