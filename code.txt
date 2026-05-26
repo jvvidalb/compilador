@@ -3,13 +3,13 @@ z = False
 a = 10 + 5 + 4126 * 15 / 2 - ( 50 - 25 ) * 50
 b = a + 300 * 5
 tuple1 = ( True , False )
-tuple1 = True
+tuple1 = True # erro não usado
 
 
 if a >= b :
     list1 = [ " "  ]
-tera = 1
-list1 = [ a , 5 , 8 ]
+tera = 1 # erro não usado
+list1 = [ a , 5 , b ] # erro não usado
 if a == b :
     print ( " " )
 
@@ -41,7 +41,9 @@ a = i
 
 for j in range ( 15 ) :
     print ( "  " )
-j = [ 1 , 2 ]
+j = [ 1 , 2 ] # Erro não usado
+
+# k = True erro semântico
 for k in range ( 2 ) :
     print ( k )
 

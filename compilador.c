@@ -1191,7 +1191,6 @@ void analisadorSemantico()
                         flag->tipo = no->tipo;
                         tipoUltimaExpressao = no->tipo;
                     }
-                    // Correção: Comparar com tipoUltimaExpressao e exibir o tipo correto dinamicamente
                     else if (tipoUltimaExpressao != no->tipo)
                     {
                         printf("[ERRO SEMANTICO - LINHA %d] Mistura de tipos na '%s' - '%s'. Esperava %s, mas encontrou %s da variavel '%s'.\n",
@@ -1309,7 +1308,6 @@ void analisadorSemantico()
     {
         if (flag->struc == LISTA || flag->struc == TUPLA)
         {
-            // Correção: Garante que a variável da Lista/Tupla salve o tipo coletado internamente
             if (tipoUltimaExpressao != UNKNOWN) {
                 flag->tipo = tipoUltimaExpressao;
             }
@@ -1706,13 +1704,8 @@ char *gerarCodigoIntermediario(DAGnode *no)
             int num_params = 0;
             DAGnode *arg = atual->dir;
 
-            /* Primeiro passo: avalia cada argumento, gera seus temporários e
-             * emite as instruções "param <valor>" em ordem. */
             while (arg != NULL)
             {
-                /* Precisamos avaliar o argumento sem avançar o ponteiro 'arg->prox',
-                 * pois gerarCodigoIntermediario percorre a lista via ->prox.
-                 * Salvamos e zeramos ->prox temporariamente para avaliar apenas este nó. */
                 DAGnode *saved_prox = arg->prox;
                 arg->prox = NULL;
 
@@ -1739,7 +1732,7 @@ char *gerarCodigoIntermediario(DAGnode *no)
             emitir(inst);
         }
         // ==========================================================
-        // FLUXO DE CONTROLE (IF, WHILE, FOR) - AGORA ELES SERÃO LIDOS!
+        // FLUXO DE CONTROLE (IF, WHILE, FOR)
         // ==========================================================
         else if (atual->type == NODE_IF)
         {
@@ -2403,7 +2396,7 @@ int main(int argc, char **argv)
         printf("===== INICIANDO ANALISE LEXICA, SINTATICA E SEMANTICA =====\n");
 
         // 1. INICIA O PARSER E A FILA SEMÂNTICA
-        // Aqui, a Árvore de Sintaxe Abstrata (AST) será construída e armazenada na global 'raizPrograma'
+        // Aqui, a Grafo Acíclico Direcionado (DAG) será construída e armazenada na global 'raizPrograma'
         // Ao mesmo tempo, a Fila Semântica validará os tipos linha por linha.
         analisadorSintatico();
 
@@ -2416,8 +2409,7 @@ int main(int argc, char **argv)
 
         printTabelaSimbolos();
 
-        // 3. GERAÇÃO DO CÓDIGO INTERMEDIÁRIO (FASE 3)
-        // Se o código chegou até aqui, significa que a AST é 100% segura para gerar código.
+        // 3. GERAÇÃO DO CÓDIGO INTERMEDIÁRIO 
         code_output = fopen("codigo_intermediario.txt", "w");
 
         if (code_output == NULL)
