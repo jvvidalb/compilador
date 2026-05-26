@@ -1363,20 +1363,23 @@ void analisadorSemantico()
 }
 
 
-void possuiVarNaoUtilizada()
-{
+int possuiVarNaoUtilizada()
+{;
+    int erro = 0;
     TNo *atual = globalTabela.head;
     while (atual != NULL)
     {
         if (atual->atomo == IDENTIFICADOR && atual->usado == 0)
         {
             printf("[ERRO SEMANTICO] Variavel '%s' declarada mas nao utilizada.\n", atual->cadeia);
+            erro = 1;
         }
         atual = atual->prox;
     }
+    return erro;
 }
 
-/*switch (tipo)
+/*CASO FALHO SEMANTICO switch (tipo)
 {
     case VARIAVEL:
         TNo* no = encontrarSimbolo(lookahead.lexema);
@@ -1411,7 +1414,7 @@ void possuiVarNaoUtilizada()
         break;
 }*/
 
-/*if (tipo == VARIAVEL) {
+/*CASO FALHO SEMANTICO if (tipo == VARIAVEL) {
     TNo* no = encontrarSimbolo(lookahead.lexema);
 
     if (tag == 0) {
@@ -2402,9 +2405,13 @@ int main(int argc, char **argv)
 
         // 2. VERIFICAÇÃO SEMÂNTICA FINAL
         // Checa se alguma variável recebeu valor e nunca foi lida.
-        possuiVarNaoUtilizada();
-
-        printf("\n> SUCESSO: Analises Sintatica e Semantica concluidas!\n");
+        if(possuiVarNaoUtilizada()){
+            printf("\nSemantica apresentou falhas!!!\n");
+            exit(1);
+        }else{
+            printf("\n> SUCESSO: Analises Sintatica e Semantica concluidas!\n");
+        }
+        
         printf("> Nenhuma quebra de tipagem encontrada. A gramatica do arquivo e valida.\n");
 
         printTabelaSimbolos();
