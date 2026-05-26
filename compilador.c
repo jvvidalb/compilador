@@ -1028,9 +1028,11 @@ Token analisadorLexico()
     return fim;
 }
 
+
 void analisadorSemantico()
 {
     tipoUltimaExpressao = UNKNOWN;
+    int ehListaouTupla = 0;
 
     if (buscarNaFila(&filaSemantica, "input") != NULL)
     {
@@ -1047,10 +1049,8 @@ void analisadorSemantico()
                              buscarNaFila(&filaSemantica, "for") != NULL);
 
     int flagReativada = 0;
-    int linhaFlag = 0; // linha do token do lado esquerdo (para erros no bloco flag)
+    int linhaFlag = 0; 
 
-    // Detecta "x =" sem lado direito:
-    // Percorre a fila; se o último token for '=' (ATRIBUICAO), não há lado direito.
     int ladoDireitoVazio = 0;
     if (temAtribuicao)
     {
@@ -1077,11 +1077,46 @@ void analisadorSemantico()
                 no->tipo = INTEIRO;
                 no->struc = VALOR;
             }
-            tipoUltimaExpressao = INTEIRO;
+
+            if (ehListaouTupla)
+            {
+                if (tipoUltimaExpressao == UNKNOWN)
+                {
+                    flag->tipo = INTEIRO;
+                    tipoUltimaExpressao = INTEIRO;
+                }
+                else if (tipoUltimaExpressao != INTEIRO)
+                {
+                    printf("[ERRO SEMANTICO - LINHA %d] Mistura de tipos na '%s' - '%s'. Esperava %s, mas encontrou INTEIRO.\n",
+                           tokenConsumido.linha, estruturaParaString(flag->struc), flag->cadeia, tipoDadoParaString(tipoUltimaExpressao));
+                    exit(1);
+                }
+            }
+            else
+            {
+                tipoUltimaExpressao = INTEIRO;
+            }
         }
         else if (tokenConsumido.tipo == T_TRUE || tokenConsumido.tipo == T_FALSE)
         {
-            tipoUltimaExpressao = BOOLEANO;
+            if (ehListaouTupla)
+            {
+                if (tipoUltimaExpressao == UNKNOWN)
+                {
+                    flag->tipo = BOOLEANO;
+                    tipoUltimaExpressao = BOOLEANO;
+                }
+                else if (tipoUltimaExpressao != BOOLEANO)
+                {
+                    printf("[ERRO SEMANTICO - LINHA %d] Mistura de tipos na '%s' - '%s'. Esperava %s, mas encontrou BOOLEANO.\n",
+                           tokenConsumido.linha, estruturaParaString(flag->struc), flag->cadeia, tipoDadoParaString(tipoUltimaExpressao));
+                    exit(1);
+                }
+            }
+            else
+            {
+                tipoUltimaExpressao = BOOLEANO;
+            }
         }
         else if (tokenConsumido.tipo == IDENTIFICADOR)
         {
@@ -1120,7 +1155,7 @@ void analisadorSemantico()
 
                 flag = no;
                 linhaFlag = tokenConsumido.linha;
-                // lado direito vazio → declara como NAO_DEFINIDO, encerra processamento
+                
                 if (ladoDireitoVazio)
                 {
                     if (no->endereco == -1)
@@ -1129,7 +1164,6 @@ void analisadorSemantico()
                         desenfileirar(&filaSemantica);
                     flag = NULL;
                     flagReativada = 0;
-                    // Sai do while mas ainda executa o gerenciamento de escopo abaixo
                     break;
                 }
             }
@@ -1149,15 +1183,36 @@ void analisadorSemantico()
                            tipoDadoParaString(no->tipo));
                     exit(1);
                 }
-                if (tipoUltimaExpressao != UNKNOWN && tipoUltimaExpressao != no->tipo)
+
+                if (ehListaouTupla)
                 {
-                    printf("[ERRO SEMANTICO - LINHA %d] Tipo incompativel na expressao: '%s' eh %s, mas o contexto esperava %s.\n",
-                           tokenConsumido.linha, no->cadeia,
-                           tipoDadoParaString(no->tipo),
-                           tipoDadoParaString(tipoUltimaExpressao));
-                    exit(1);
+                    if (tipoUltimaExpressao == UNKNOWN)
+                    {
+                        flag->tipo = no->tipo;
+                        tipoUltimaExpressao = no->tipo;
+                    }
+                    // Correção: Comparar com tipoUltimaExpressao e exibir o tipo correto dinamicamente
+                    else if (tipoUltimaExpressao != no->tipo)
+                    {
+                        printf("[ERRO SEMANTICO - LINHA %d] Mistura de tipos na '%s' - '%s'. Esperava %s, mas encontrou %s da variavel '%s'.\n",
+                               tokenConsumido.linha, estruturaParaString(flag->struc), flag->cadeia, 
+                               tipoDadoParaString(tipoUltimaExpressao), tipoDadoParaString(no->tipo), no->cadeia);
+                        exit(1);
+                    }
                 }
-                tipoUltimaExpressao = no->tipo;
+                else
+                {
+                    if (tipoUltimaExpressao != UNKNOWN && tipoUltimaExpressao != no->tipo)
+                    {
+                        printf("[ERRO SEMANTICO - LINHA %d] Tipo incompativel na expressao: '%s' eh %s, mas o contexto esperava %s.\n",
+                               tokenConsumido.linha, no->cadeia,
+                               tipoDadoParaString(no->tipo),
+                               tipoDadoParaString(tipoUltimaExpressao));
+                        exit(1);
+                    }
+                    tipoUltimaExpressao = no->tipo;
+                }
+                
                 no->usado = 1;
             }
         }
@@ -1179,23 +1234,18 @@ void analisadorSemantico()
                        tokenConsumido.linha, tokenConsumido.lexema);
                 exit(1);
             }
-            // Se for um operador de magnitude (>, <, >=, <=), ambos os lados devem ser INTEIRO
             if (strcmp(tokenConsumido.lexema, ">") == 0 || strcmp(tokenConsumido.lexema, "<") == 0 ||
                 strcmp(tokenConsumido.lexema, ">=") == 0 || strcmp(tokenConsumido.lexema, "<=") == 0)
             {
-
                 if (tipoUltimaExpressao != INTEIRO)
                 {
                     printf("[ERRO SEMANTICO - LINHA %d] Operador '%s' requer operando do tipo INTEIRO.\n", tokenConsumido.linha, tokenConsumido.lexema);
                     exit(1);
                 }
-                // Mantemos INTEIRO para forçar que o próximo operando (o da direita) também seja INTEIRO
                 tipoUltimaExpressao = INTEIRO;
             }
             else
             {
-                // Para operadores como == e !=, você pode permitir qualquer tipo,
-                // mas eles devem ser iguais. Nesse caso, salve em uma variável auxiliar ou trate adequadamente.
                 tipoUltimaExpressao = UNKNOWN;
             }
         }
@@ -1209,12 +1259,12 @@ void analisadorSemantico()
                 if (strcmp(prox, "[") == 0 && flag != NULL)
                 {
                     flag->struc = LISTA;
-                    flag->tipo = INTEIRO;
+                    ehListaouTupla = 1;
                 }
                 else if (strcmp(prox, "(") == 0 && flag != NULL)
                 {
                     flag->struc = TUPLA;
-                    flag->tipo = INTEIRO;
+                    ehListaouTupla = 1;
                 }
             }
         }
@@ -1259,6 +1309,10 @@ void analisadorSemantico()
     {
         if (flag->struc == LISTA || flag->struc == TUPLA)
         {
+            // Correção: Garante que a variável da Lista/Tupla salve o tipo coletado internamente
+            if (tipoUltimaExpressao != UNKNOWN) {
+                flag->tipo = tipoUltimaExpressao;
+            }
             flag = NULL;
             flagReativada = 0;
         }
@@ -1309,6 +1363,7 @@ void analisadorSemantico()
 
     tipoUltimaExpressao = UNKNOWN;
 }
+
 
 void possuiVarNaoUtilizada()
 {

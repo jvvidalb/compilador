@@ -1,5 +1,5 @@
 ====================================================================
-          COMPILADOR MINI-PYTHON - ANALISADOR LÉXICO E SINTÁTICO
+          COMPILADOR MINI-PYTHON - ANALISADOR LÉXICO E SINTÁTICO E SEMANTICO
 ====================================================================
 
 1. O QUE FOI IMPLEMENTADO ATÉ O MOMENTO
@@ -28,26 +28,181 @@ linguagem baseada em Python (Mini-Python), desenvolvidas em C puro:
     retornam valor (Terms: len, input).
   
 * Analisador Semantico:
-  - Utilizamos uma estrutura FIFO (First-In First-Out), ou seja, uma fila, para auxiliar o processo de análise.
-  - A escolha dessa estrutura reflete a forma natural de leitura do código: da esquerda para a direita.
-  - Como o analisador sintático já garantiu que não há erros estruturais, o semântico assume essa etapa concluída e processa cada linha em busca de significado, separando a lógica em lado esquerdo e lado direito da expressão.
-  - O processo semântico se inicia quando o sintático consome um token e o enfileira para o semântico.
-  - Ao término da linha, com a análise sintática confirmada, o analisador semântico começa a desenfileirar os tokens.
-  - Utilizamos uma flag para referenciar o nó do lado esquerdo da atribuição (ou o escopo local vigente).
-  - Por se tratar de uma linguagem não tipada, a variável do lado esquerdo é registrada inicialmente como NAO_DEFINIDO, aguardando a avaliação do lado direito. 
-  - A lógica de lados funciona da seguinte forma: o lado esquerdo é definido pelo lado direito. Por exemplo, em x = 5: x recebe o estado NAO_DEFINIDO e a flag aponta para ele; ao encontrar =, o modo muda para lado direito; ao encontrar 5, o tipo INTEIRO é propagado para a flag.
-  - Toda expressão do lado direito é verificada para garantir que todos os operandos possuam o mesmo tipo — mistura de tipos ou uso de variáveis não definidas gera erro. 
-  - Chamadas a funções como input são ignoradas na verificação de tipos.
-  - Implementamos um mini escopo como exceção ao escopo global: ao encontrar uma estrutura de controle (if, while, for), a próxima linha passa a ser tratada como corpo do bloco.
-  - Caso uma variável seja declarada dentro desse bloco, ela é registrada como noLocal.
-  - Ao sair do bloco, esse conceito de acessível e inacessível entra em ação: a variável declarada localmente se torna inacessível — como se deixasse de existir — mas pode ser sobrescrita por uma nova declaração externa. 
-  - No caso do for, o iterador i é presumido como INTEIRO e marcado como ITERATIVO durante o bloco; ao término, torna-se inacessível.
+Estrutura utilizada:
+- Fila FIFO (First-In First-Out).
+- Pois garante a destruição linear
+- Mantem a ordem do consumo dos tokens
+
+Objetivo:
+- Validar significado do código.
+- Verificar tipos.
+- Controlar escopo.
+- Detectar inconsistências semânticas.
+
+Características:
+- Processamento da esquerda para direita.
+- O sintático garante a estrutura da linha.
+- O semântico valida significado e tipos.
+- Tokens são processados linha por linha.
+
+Fluxo:
+    Sintático -> Fila -> Semântico
+
+Regras implementadas:
+- Separação entre lado esquerdo e direito.
+- Inferência de tipos.
+- Propagação de tipos.
+- Verificação de tipos incompatíveis.
+- Uso antes da definição.
+- Controle de mini escopo local.
+
+Funcionamento:
+- O sintático consome o token.
+- O token é enfileirado.
+- Ao final da linha:
+    - o semântico desenfileira os tokens;
+    - realiza validações;
+    - propaga tipos.
+
+Sistema de tipos:
+- UNKNOWN
+- NAO_DEFINIDO
+- INTEIRO
+- BOOLEANO
+
+Estruturas reconhecidas:
+- VARIAVEL
+- VALOR
+- LISTA
+- TUPLA
+- ITERATIVO
+
+Listas e tuplas:
+- Detectadas após operador '='.
+- '[' define estrutura LISTA.
+- '(' define estrutura TUPLA.
+- Não tem mistura de tipos (APENAS)
+- Não permite a troca do tipo da lista (APENAS)
+
+Por exemplo:
+x = [ True ]
+x = True # é valido pois o tipo é o mesmo 
+         # Porem perde-se a estrutura
+
+Endereçamento:
+- Variáveis recebem endereço de memória.
+- Endereços são atribuídos incrementalmente.
+- Controle realizado pela variável 'end'.
+
+Objetivos do endereçamento:
+- Preparação para geração de código.
+- Organização de memória.
+- Identificação única de variáveis.
+
+Regras:
+- Novas variáveis recebem novo endereço.
+- Iteradores do for também recebem endereço.
+- Valores literais não recebem endereço.
+
+
+Escopo:
+- Escopo global.
+- Mini escopo para:
+    - if
+    - while
+    - for
+
+Regras de escopo:
+- Variáveis locais tornam-se inacessíveis.
+- Iteradores do for são ITERATIVO.
+- Iteradores tornam-se inacessíveis após o bloco.
+
+Funções ignoradas na tipagem:
+- input()
+
+====================================================================
+            RESUMO DAS FLAGS E VARIÁVEIS DE CONTROLE
+====================================================================
+
++----------------------+----------------+----------------------------------------------+
+| Variável             | Tipo           | Propósito                                   |
++----------------------+----------------+----------------------------------------------+
+| flag                 | TNo *          | Aponta para o nó do lado esquerdo da        |
+|                      |                | atribuição em andamento.                    |
++----------------------+----------------+----------------------------------------------+
+| flagReativada        | int            | Indica que 'flag' foi redeclarada após      |
+|                      |                | estar INACESSIVEL.                          |
++----------------------+----------------+----------------------------------------------+
+| noLocal              | TNo *          | Aponta para variável declarada dentro       |
+|                      |                | de um bloco de controle.                    |
++----------------------+----------------+----------------------------------------------+
+| proxLine             | int            | Valor 1 indica que a próxima linha          |
+|                      |                | pertence ao corpo de um bloco.              |
++----------------------+----------------+----------------------------------------------+
+| tipoUltimaExpressao  | TipoDado       | Armazena o tipo acumulado do lado direito   |
+|                      |                | durante a análise semântica.                |
++----------------------+----------------+----------------------------------------------+
+| ladoDireito          | int (local)    | 0 = lado esquerdo                           |
+|                      |                | 1 = lado direito                            |
++----------------------+----------------+----------------------------------------------+
+| ehLinhaDeControle    | int (local)    | Indica presença de if, while ou for         |
+|                      |                | na linha atual.                             |
++----------------------+----------------+----------------------------------------------+
+| tagLine              | int            | Linha atualmente acumulada na fila.         |
+|                      |                | Utilizada para detectar mudança de linha.   |
++----------------------+----------------+----------------------------------------------+
++----------------------+----------------+----------------------------------------------+
+| ehListaouTupla       | int (local)    | 0 = não é lista/Tupla                       |
+|                      |                | 1 = lista/Tupla                             |
++----------------------+----------------+----------------------------------------------+
+Exemplo de Funcionamento:
+
+[ Código Fonte: x = 5 ]
+        │
+        ▼
+┌─────────────────────────┐
+│   Analisador Sintático  │ ──► Garante que a gramática está correta (ID = NUM)
+└─────────────────────────┘
+        │ consome();
+        ▼ (Enfileira na ordem de leitura)
+┌─────────────────────────┐
+│   Fila FIFO Semântica   │ ──► [ "x" ] ──► [ "=" ] ──► [ "5" ]
+└─────────────────────────┘
+        │ analisadorSemantico();
+        ▼ (Processamento linear / "Destruição")
+┌─────────────────────────┐
+│  Analisador Semântico   │
+│                         │
+│  1. Token "x"           │ ──► Lado Esquerdo. ID não definido. Aloca end 0. flag = &x
+│  2. Token "="           │ ──► Seta ladoDireito = 1
+│  3. Token "5"           │ ──► NUMERO (INTEIRO). tipoUltimaExpressao = INTEIRO
+│                         │
+│  4. Fim da Fila         │ ──► Propagação: flag->tipo = tipoUltimaExpressao (x vira INTEIRO)
+└─────────────────────────┘
 
 * Tabela de símbolos:
-  - Como descrito na análise semântica, o único caso de escopo restrito é o mini escopo das estruturas de controle. 
-  - Por isso, não faz sentido criar tabelas de símbolos separadas por bloco, o que apenas aumentaria a complexidade com ponteiros adicionais
-  - Por se tratar de uma linguagem com muitas restrições — especialmente a regra de que toda variável, uma vez atribuída, deve sempre receber o mesmo tipo — uma única tabela de símbolos global é suficiente para atender a todos os casos.
-  - Esses fatores levaram à decisão de implementar uma única tabela de símbolos global, sem necessidade de estrutura em pilha.
+Estrutura utilizada:
+- Tabela global única.
+
+Informações armazenadas:
+- Cadeia ( lexema )
+- Atomo ( token )
+- Tipo (BOOLEANO OU INTEIRO)
+- Estado (ACESSÍVEL OU INACESSÍVEL)
+- Estrutura (VARIAVEL, VALOR, LISTA OU TUPLA)
+- Usado ( 1 - USADO, 0 - NÃO USADO)
+- Endereços (-1 não possui endereçamento)
+
+Motivos da escolha:
+- Linguagem possui escopo simplificado.
+- Apenas mini escopo local.
+- Evita complexidade desnecessária.
+- Não necessita pilha de tabelas.
+
+Características:
+- Integração com léxico e semântico.
+- Atualização dinâmica de tipos.
+- Controle de acessibilidade.
 
 
 
@@ -57,7 +212,7 @@ Pré-requisitos: Ter um compilador C (como o GCC) instalado.
 
 gcc -Wall -Wno-unused-result -g -Og compilador.c -o compilador
 
-./compilador code.mp
+./compilador arquivo.txt
 
 A saída no terminal mostrará primeiramente a lista de tokens e símbolos 
 encontrados (Análise Léxica), seguida pelo resultado da Análise 
