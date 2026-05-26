@@ -5,7 +5,8 @@ maior1 = False
 maior2 = False
 
 if ( number1 > number2 ) :
-    maior1 = True
+    number1 = True
+    #erro semântico porque number1 é inteiro 
 elif ( number2 > number1 ) :
     maior2 = True
 else :
@@ -17,7 +18,7 @@ if maior1 == True :
 if maior2 == True :
     print ( " o maior numero eh ---> " , number2 )
 
-vetorList = [ 2 , 3 , 5 , 7 , 11 ]
+vetorList = [ 2 , 3 ]
  
 i = 0
 while i < len ( vetorList ) :

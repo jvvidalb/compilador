@@ -265,22 +265,22 @@ typedef struct
 } Token;
 ;
 
-typedef struct NodoFila
+typedef struct NodeFila
 {
     Token token;
-    struct NodoFila *proximo;
-} NodoFila;
+    struct NodeFila *proximo;
+} NodeFila;
 
 typedef struct
 {
-    NodoFila *head;
-    NodoFila *tail;
+    NodeFila *head;
+    NodeFila *tail;
 } FilaSemantica;
 
 // Funções auxiliares
 void enfileirar(FilaSemantica *fila, Token t)
 {
-    NodoFila *novo = (NodoFila *)malloc(sizeof(NodoFila));
+    NodeFila *novo = (NodeFila *)malloc(sizeof(NodeFila));
     novo->token = t;
     novo->proximo = NULL;
     if (fila->tail == NULL)
@@ -301,7 +301,7 @@ Token desenfileirar(FilaSemantica *fila)
         printf("[ERRO] Fila vazia!\n");
         exit(1);
     }
-    NodoFila *aux = fila->head;
+    NodeFila *aux = fila->head;
     Token t = aux->token;
     fila->head = aux->proximo;
     if (fila->head == NULL)
@@ -310,9 +310,9 @@ Token desenfileirar(FilaSemantica *fila)
     return t;
 }
 
-NodoFila *buscarNaFila(FilaSemantica *fila, char *lexema)
+NodeFila *buscarNaFila(FilaSemantica *fila, char *lexema)
 {
-    NodoFila *atual = fila->head;
+    NodeFila *atual = fila->head;
     while (atual != NULL)
     {
         if (strcmp(atual->token.lexema, lexema) == 0)
@@ -1028,9 +1028,11 @@ Token analisadorLexico()
     return fim;
 }
 
+
 void analisadorSemantico()
 {
     tipoUltimaExpressao = UNKNOWN;
+    int ehListaouTupla = 0;
 
     if (buscarNaFila(&filaSemantica, "input") != NULL)
     {
@@ -1042,13 +1044,26 @@ void analisadorSemantico()
     int temAtribuicao = buscarNaFila(&filaSemantica, "=") != NULL ? 1 : 0;
     int ladoDireito = !temAtribuicao ? 1 : 0;
 
-    // Detecta se a linha atual processada é um comando de controle loop/condicional
     int ehLinhaDeControle = (buscarNaFila(&filaSemantica, "if") != NULL ||
                              buscarNaFila(&filaSemantica, "while") != NULL ||
                              buscarNaFila(&filaSemantica, "for") != NULL);
 
-    // Flag para saber se a variável do lado esquerdo foi reativada (era INACESSIVEL)
     int flagReativada = 0;
+    int linhaFlag = 0; 
+
+    int ladoDireitoVazio = 0;
+    if (temAtribuicao)
+    {
+        NodeFila *n = filaSemantica.head;
+        NodeFila *ultimo = NULL;
+        while (n != NULL)
+        {
+            ultimo = n;
+            n = n->proximo;
+        }
+        if (ultimo != NULL && ultimo->token.tipo == ATRIBUICAO)
+            ladoDireitoVazio = 1;
+    }
 
     while (!filaVazia(&filaSemantica))
     {
@@ -1057,32 +1072,66 @@ void analisadorSemantico()
         if (tokenConsumido.tipo == NUMERO)
         {
             TNo *no = encontrarSimbolo(tokenConsumido.lexema);
-            if (no != NULL && no->tipo == UNKNOWN){
+            if (no != NULL && no->tipo == UNKNOWN)
+            {
                 no->tipo = INTEIRO;
                 no->struc = VALOR;
             }
-            tipoUltimaExpressao = INTEIRO;
 
+            if (ehListaouTupla)
+            {
+                if (tipoUltimaExpressao == UNKNOWN)
+                {
+                    flag->tipo = INTEIRO;
+                    tipoUltimaExpressao = INTEIRO;
+                }
+                else if (tipoUltimaExpressao != INTEIRO)
+                {
+                    printf("[ERRO SEMANTICO - LINHA %d] Mistura de tipos na '%s' - '%s'. Esperava %s, mas encontrou INTEIRO.\n",
+                           tokenConsumido.linha, estruturaParaString(flag->struc), flag->cadeia, tipoDadoParaString(tipoUltimaExpressao));
+                    exit(1);
+                }
+            }
+            else
+            {
+                tipoUltimaExpressao = INTEIRO;
+            }
         }
         else if (tokenConsumido.tipo == T_TRUE || tokenConsumido.tipo == T_FALSE)
         {
-            tipoUltimaExpressao = BOOLEANO;
+            if (ehListaouTupla)
+            {
+                if (tipoUltimaExpressao == UNKNOWN)
+                {
+                    flag->tipo = BOOLEANO;
+                    tipoUltimaExpressao = BOOLEANO;
+                }
+                else if (tipoUltimaExpressao != BOOLEANO)
+                {
+                    printf("[ERRO SEMANTICO - LINHA %d] Mistura de tipos na '%s' - '%s'. Esperava %s, mas encontrou BOOLEANO.\n",
+                           tokenConsumido.linha, estruturaParaString(flag->struc), flag->cadeia, tipoDadoParaString(tipoUltimaExpressao));
+                    exit(1);
+                }
+            }
+            else
+            {
+                tipoUltimaExpressao = BOOLEANO;
+            }
         }
         else if (tokenConsumido.tipo == IDENTIFICADOR)
         {
             TNo *no = encontrarSimbolo(tokenConsumido.lexema);
             if (no == NULL)
             {
-                printf("[ERRO SEMANTICO - LINHA %d] Variavel '%s' nao encontrada.\n", tokenConsumido.linha, tokenConsumido.lexema);
+                printf("[ERRO SEMANTICO - LINHA %d] Variavel '%s' nao encontrada na tabela de simbolos.\n",
+                       tokenConsumido.linha, tokenConsumido.lexema);
                 exit(1);
             }
 
             if (!ladoDireito)
             {
-                // Lado esquerdo da atribuição (Declaração/Escrita)
                 int ehNovaDeclaracao = 0;
 
-                // REGRA: Variável INACESSIVEL no lado esquerdo é reativada com novo tipo
                 if (no->temp == INACESSIVEL)
                 {
                     no->tipo = NAO_DEFINIDO;
@@ -1098,43 +1147,71 @@ void analisadorSemantico()
                     no->endereco = end++;
                     ehNovaDeclaracao = 1;
                 }
-                // reatribuição de variável já existente: não invalida ao sair do bloco
 
-                // Só guarda noLocal se for declaração nova dentro de um bloco
                 if (proxLine == 1 && ehNovaDeclaracao)
                     noLocal = no;
-                if(no->struc != VALOR){
+                if (no->struc != VALOR)
                     no->struc = VARIAVEL;
-                }
-                
 
                 flag = no;
+                linhaFlag = tokenConsumido.linha;
+                
+                if (ladoDireitoVazio)
+                {
+                    if (no->endereco == -1)
+                        no->endereco = end++;
+                    while (!filaVazia(&filaSemantica))
+                        desenfileirar(&filaSemantica);
+                    flag = NULL;
+                    flagReativada = 0;
+                    break;
+                }
             }
             else
             {
-                // REGRA: Impedir uso de variáveis inacessíveis no lado DIREITO
                 if (no->temp == INACESSIVEL)
                 {
-                    printf("[ERRO SEMANTICO - LINHA %d] Variavel '%s' nao pode ser acessada (fora do escopo local).\n", tokenConsumido.linha, no->cadeia);
-                    exit(1);
-                }
-
-                // Lado direito (Uso/Leitura)
-                if (no->tipo == UNKNOWN || no->tipo == NAO_DEFINIDO)
-                {
-                    printf("[ERRO SEMANTICO - LINHA %d] Variavel '%s' usada antes de ser definida.\n",
+                    printf("[ERRO SEMANTICO - LINHA %d] Variavel '%s' nao pode ser acessada fora do escopo local onde foi declarada.\n",
                            tokenConsumido.linha, no->cadeia);
                     exit(1);
                 }
-                if (tipoUltimaExpressao != UNKNOWN && tipoUltimaExpressao != no->tipo)
+
+                if (no->tipo == UNKNOWN || no->tipo == NAO_DEFINIDO)
                 {
-                    printf("[ERRO SEMANTICO - LINHA %d] Tipo incompativel: '%s' eh %s, esperava %s.\n",
+                    printf("[ERRO SEMANTICO - LINHA %d] Variavel '%s' usada antes de ser definida (tipo: %s).\n",
                            tokenConsumido.linha, no->cadeia,
-                           tipoDadoParaString(no->tipo),
-                           tipoDadoParaString(tipoUltimaExpressao));
+                           tipoDadoParaString(no->tipo));
                     exit(1);
                 }
-                tipoUltimaExpressao = no->tipo;
+
+                if (ehListaouTupla)
+                {
+                    if (tipoUltimaExpressao == UNKNOWN)
+                    {
+                        flag->tipo = no->tipo;
+                        tipoUltimaExpressao = no->tipo;
+                    }
+                    else if (tipoUltimaExpressao != no->tipo)
+                    {
+                        printf("[ERRO SEMANTICO - LINHA %d] Mistura de tipos na '%s' - '%s'. Esperava %s, mas encontrou %s da variavel '%s'.\n",
+                               tokenConsumido.linha, estruturaParaString(flag->struc), flag->cadeia, 
+                               tipoDadoParaString(tipoUltimaExpressao), tipoDadoParaString(no->tipo), no->cadeia);
+                        exit(1);
+                    }
+                }
+                else
+                {
+                    if (tipoUltimaExpressao != UNKNOWN && tipoUltimaExpressao != no->tipo)
+                    {
+                        printf("[ERRO SEMANTICO - LINHA %d] Tipo incompativel na expressao: '%s' eh %s, mas o contexto esperava %s.\n",
+                               tokenConsumido.linha, no->cadeia,
+                               tipoDadoParaString(no->tipo),
+                               tipoDadoParaString(tipoUltimaExpressao));
+                        exit(1);
+                    }
+                    tipoUltimaExpressao = no->tipo;
+                }
+                
                 no->usado = 1;
             }
         }
@@ -1142,8 +1219,9 @@ void analisadorSemantico()
         {
             if (tipoUltimaExpressao != INTEIRO)
             {
-                printf("[ERRO SEMANTICO - LINHA %d] Operacao aritmetica requer INTEIRO, encontrou %s.\n",
-                       tokenConsumido.linha, tipoDadoParaString(tipoUltimaExpressao));
+                printf("[ERRO SEMANTICO - LINHA %d] Operacao aritmetica com operador '%s' requer operandos do tipo INTEIRO, mas encontrou %s.\n",
+                       tokenConsumido.linha, tokenConsumido.lexema,
+                       tipoDadoParaString(tipoUltimaExpressao));
                 exit(1);
             }
         }
@@ -1151,29 +1229,41 @@ void analisadorSemantico()
         {
             if (tipoUltimaExpressao == UNKNOWN)
             {
-                printf("[ERRO SEMANTICO - LINHA %d] Operacao relacional sem operando definido.\n", tokenConsumido.linha);
+                printf("[ERRO SEMANTICO - LINHA %d] Operacao relacional com operador '%s' sem operando definido antes dele.\n",
+                       tokenConsumido.linha, tokenConsumido.lexema);
                 exit(1);
             }
-            tipoUltimaExpressao = UNKNOWN;
+            if (strcmp(tokenConsumido.lexema, ">") == 0 || strcmp(tokenConsumido.lexema, "<") == 0 ||
+                strcmp(tokenConsumido.lexema, ">=") == 0 || strcmp(tokenConsumido.lexema, "<=") == 0)
+            {
+                if (tipoUltimaExpressao != INTEIRO)
+                {
+                    printf("[ERRO SEMANTICO - LINHA %d] Operador '%s' requer operando do tipo INTEIRO.\n", tokenConsumido.linha, tokenConsumido.lexema);
+                    exit(1);
+                }
+                tipoUltimaExpressao = INTEIRO;
+            }
+            else
+            {
+                tipoUltimaExpressao = UNKNOWN;
+            }
         }
         else if (tokenConsumido.tipo == ATRIBUICAO)
         {
             ladoDireito = 1;
 
-            // Detecta se o lado direito é uma lista [ ou tupla (
-            // O próximo token na fila revela a estrutura
             if (filaSemantica.head != NULL)
             {
                 char *prox = filaSemantica.head->token.lexema;
                 if (strcmp(prox, "[") == 0 && flag != NULL)
                 {
                     flag->struc = LISTA;
-                    flag->tipo = INTEIRO; // tipo provisório; será validado pelo conteúdo
+                    ehListaouTupla = 1;
                 }
                 else if (strcmp(prox, "(") == 0 && flag != NULL)
                 {
                     flag->struc = TUPLA;
-                    flag->tipo = INTEIRO; // tipo provisório
+                    ehListaouTupla = 1;
                 }
             }
         }
@@ -1187,34 +1277,28 @@ void analisadorSemantico()
             proxLine = 1;
             ladoDireito = 1;
 
-            // O próximo token na fila do 'for' obrigatoriamente é o Identificador de iteração (garantido pelo sintático)
-            NodoFila *nodoVar = filaSemantica.head;
+            NodeFila *nodoVar = filaSemantica.head;
             if (nodoVar != NULL && nodoVar->token.tipo == IDENTIFICADOR)
             {
                 TNo *noIter = encontrarSimbolo(nodoVar->token.lexema);
                 if (noIter != NULL)
                 {
-                    // CASO INVALIDO: variavel ja declarada com tipo incompativel (ex: i = True, for i ...)
                     if (noIter->tipo != UNKNOWN && noIter->tipo != NAO_DEFINIDO && noIter->tipo != INTEIRO)
                     {
-                        printf("[ERRO SEMANTICO - LINHA %d] Variavel '%s' ja declarada como %s, nao pode ser usada como iterador (requer INTEIRO).\n",
-                               nodoVar->token.linha, noIter->cadeia, tipoDadoParaString(noIter->tipo));
+                        printf("[ERRO SEMANTICO - LINHA %d] Variavel '%s' ja declarada como %s e nao pode ser usada como iterador do 'for' (iterador requer tipo INTEIRO).\n",
+                               nodoVar->token.linha, noIter->cadeia,
+                               tipoDadoParaString(noIter->tipo));
                         exit(1);
                     }
 
-                    // CASO ACESSIVEL: variavel ja era INTEIRO antes do for — mantem acessivel apos o loop
-                    // Marcamos com struc = ITERATIVO apenas se era UNKNOWN/NAO_DEFINIDO (nova declaracao do for)
                     int jaEraInteiroExterno = (noIter->tipo == INTEIRO && noIter->temp == ACESSIVEL);
-
                     noIter->tipo = INTEIRO;
                     noIter->temp = ACESSIVEL;
                     if (!jaEraInteiroExterno)
                     {
-                        // Declarada pelo proprio for: invalida apos o bloco
                         noIter->struc = ITERATIVO;
                         noIter->endereco = end++;
                     }
-                    // Se ja era INTEIRO externo, mantem struc = VARIAVEL e nao invalida apos o bloco
                 }
             }
         }
@@ -1222,9 +1306,11 @@ void analisadorSemantico()
 
     if (flag != NULL)
     {
-        // Para LISTA e TUPLA, o tipo já foi definido pela estrutura — não precisa checar
         if (flag->struc == LISTA || flag->struc == TUPLA)
         {
+            if (tipoUltimaExpressao != UNKNOWN) {
+                flag->tipo = tipoUltimaExpressao;
+            }
             flag = NULL;
             flagReativada = 0;
         }
@@ -1232,13 +1318,14 @@ void analisadorSemantico()
         {
             if (tipoUltimaExpressao == UNKNOWN)
             {
-                printf("[ERRO SEMANTICO] Lado direito da atribuicao sem tipo definido.\n");
+                printf("[ERRO SEMANTICO - LINHA %d] Lado direito da atribuicao de '%s' nao possui tipo definido (expressao vazia ou invalida).\n",
+                       linhaFlag, flag->cadeia);
                 exit(1);
             }
             if (!flagReativada && flag->tipo != NAO_DEFINIDO && flag->tipo != tipoUltimaExpressao)
             {
-                printf("[ERRO SEMANTICO] Atribuicao incompativel: '%s' eh %s mas lado direito eh %s.\n",
-                       flag->cadeia,
+                printf("[ERRO SEMANTICO - LINHA %d] Atribuicao incompativel: variavel '%s' eh do tipo %s mas o lado direito da expressao eh %s.\n",
+                       linhaFlag, flag->cadeia,
                        tipoDadoParaString(flag->tipo),
                        tipoDadoParaString(tipoUltimaExpressao));
                 exit(1);
@@ -1249,20 +1336,19 @@ void analisadorSemantico()
         }
     }
 
-    // Gerenciamento de Escopo ao fim da linha avaliada
+    tipoUltimaExpressao = UNKNOWN;
+
     if (ehLinhaDeControle)
     {
         proxLine = 1;
     }
     else if (proxLine == 1)
     {
-        // Invalida a variável declarada no corpo do bloco (identificada por noLocal)
         if (noLocal != NULL)
         {
             noLocal->temp = INACESSIVEL;
             noLocal = NULL;
         }
-        // Invalida também a variável iteradora do for (identificada por struc == ITERATIVO)
         TNo *atual = globalTabela.head;
         while (atual != NULL)
         {
@@ -1273,24 +1359,27 @@ void analisadorSemantico()
         proxLine = 0;
     }
 
-
     tipoUltimaExpressao = UNKNOWN;
 }
 
-void possuiVarNaoUtilizada()
-{
+
+int possuiVarNaoUtilizada()
+{;
+    int erro = 0;
     TNo *atual = globalTabela.head;
     while (atual != NULL)
     {
         if (atual->atomo == IDENTIFICADOR && atual->usado == 0)
         {
             printf("[ERRO SEMANTICO] Variavel '%s' declarada mas nao utilizada.\n", atual->cadeia);
+            erro = 1;
         }
         atual = atual->prox;
     }
+    return erro;
 }
 
-/*switch (tipo)
+/*CASO FALHO SEMANTICO switch (tipo)
 {
     case VARIAVEL:
         TNo* no = encontrarSimbolo(lookahead.lexema);
@@ -1325,7 +1414,7 @@ void possuiVarNaoUtilizada()
         break;
 }*/
 
-/*if (tipo == VARIAVEL) {
+/*CASO FALHO SEMANTICO if (tipo == VARIAVEL) {
     TNo* no = encontrarSimbolo(lookahead.lexema);
 
     if (tag == 0) {
@@ -1455,26 +1544,309 @@ void consome(TAtomo tipo_esperado, const char *lexema_esperado)
     }
 }
 
-//Funcoes auxiliares da geracao de codigo intermediario
+// Funcoes auxiliares da geracao de codigo intermediario
 
 int temp_counter = 1;
 int rotulo_counter = 1;
 FILE *code_output = NULL; // O PDF pede para salvar em um arquivo .txt
 
 // Gera uma nova variável temporária (t1, t2, t3...)
-void novo_temp(char *buffer) {
+void novo_temp(char *buffer)
+{
     sprintf(buffer, "t%d", temp_counter++);
 }
 
 // Gera um novo rótulo (L1, L2, L3...) conforme exigido pelo PDF
-void proximo_rotulo(char *buffer) {
+void proximo_rotulo(char *buffer)
+{
     sprintf(buffer, "L%d", rotulo_counter++);
 }
 
 // Função para emitir código para o arquivo texto
-void emitir(const char *instrucao) {
+void emitir(const char *instrucao)
+{
     fprintf(code_output, "%s\n", instrucao);
-    //printf("%s\n", instrucao); 
+    // printf("%s\n", instrucao);
+}
+
+typedef enum
+{
+    NODE_OPERACAO,
+    NODE_VARIAVEL,
+    NODE_NUMERO,
+    NODE_ATRIBUICAO,
+    NODE_ATRIBUICAO_INDEXADA,
+    NODE_INDEX_GET,
+    NODE_IF,
+    NODE_WHILE,
+    NODE_FOR,
+    NODE_PRINT,
+    NODE_IGNORAR
+} NodeType;
+
+typedef struct DAGnode
+{
+    NodeType type;
+    char lexema[100];
+    struct DAGnode *esq;
+    struct DAGnode *dir;
+    struct DAGnode *body_else;
+    struct DAGnode *prox;
+} DAGnode;
+
+DAGnode *criarNo(NodeType type, const char *lexema)
+{
+    DAGnode *no = (DAGnode *)calloc(1, sizeof(DAGnode));
+    no->type = type;
+    if (lexema)
+        strcpy(no->lexema, lexema);
+    return no;
+}
+
+char *gerarCodigoIntermediario(DAGnode *no)
+{
+    if (no == NULL)
+        return NULL;
+
+    DAGnode *atual = no;
+    char *last_val = NULL; // Armazena o último valor gerado (ex: t1, t2)
+
+    while (atual != NULL)
+    {
+        char *current_val = NULL;
+
+        if (atual->type == NODE_IGNORAR)
+        {
+            // Não faz nada, apenas prossegue
+        }
+        else if (atual->type == NODE_VARIAVEL || atual->type == NODE_NUMERO)
+        {
+            current_val = (char *)malloc(100);
+            strcpy(current_val, atual->lexema);
+        }
+        else if (atual->type == NODE_OPERACAO)
+        {
+            char *esq = gerarCodigoIntermediario(atual->esq);
+            char *dir = gerarCodigoIntermediario(atual->dir);
+
+            if (!esq)
+            {
+                esq = (char *)malloc(2);
+                strcpy(esq, "0");
+            }
+            if (!dir)
+            {
+                dir = (char *)malloc(2);
+                strcpy(dir, "0");
+            }
+
+            current_val = (char *)malloc(100);
+            novo_temp(current_val);
+
+            char inst[200];
+            sprintf(inst, "%s = %s %s %s", current_val, esq, atual->lexema, dir);
+            emitir(inst);
+            free(esq);
+            free(dir);
+        }
+        else if (atual->type == NODE_ATRIBUICAO)
+        {
+            char *dir = gerarCodigoIntermediario(atual->dir);
+            if (!dir)
+            {
+                dir = (char *)malloc(2);
+                strcpy(dir, "0");
+            }
+
+            char inst[200];
+            sprintf(inst, "%s = %s", atual->lexema, dir);
+            emitir(inst);
+            free(dir);
+        }
+        else if (atual->type == NODE_INDEX_GET)
+        {
+            char *index = gerarCodigoIntermediario(atual->esq);
+            if (!index)
+            {
+                index = (char *)malloc(2);
+                strcpy(index, "0");
+            }
+
+            current_val = (char *)malloc(100);
+            novo_temp(current_val);
+
+            char inst[200];
+            sprintf(inst, "%s = %s [%s]", current_val, atual->lexema, index);
+            emitir(inst);
+            free(index);
+        }
+        else if (atual->type == NODE_ATRIBUICAO_INDEXADA)
+        {
+            char *index = gerarCodigoIntermediario(atual->esq);
+            char *val_dir = gerarCodigoIntermediario(atual->dir);
+
+            if (!index)
+            {
+                index = (char *)malloc(2);
+                strcpy(index, "0");
+            }
+            if (!val_dir)
+            {
+                val_dir = (char *)malloc(2);
+                strcpy(val_dir, "0");
+            }
+
+            char inst[200];
+            sprintf(inst, "%s [%s] = %s", atual->lexema, index, val_dir);
+            emitir(inst);
+            free(index);
+            free(val_dir);
+        }
+        else if (atual->type == NODE_PRINT)
+        {
+            int num_params = 0;
+            DAGnode *arg = atual->dir;
+
+            while (arg != NULL)
+            {
+                DAGnode *saved_prox = arg->prox;
+                arg->prox = NULL;
+
+                char *val = gerarCodigoIntermediario(arg);
+                if (!val)
+                {
+                    val = (char *)malloc(2);
+                    strcpy(val, "0");
+                }
+
+                char inst[200];
+                sprintf(inst, "param %s", val);
+                emitir(inst);
+                free(val);
+
+                num_params++;
+                arg->prox = saved_prox; // restaura a cadeia
+                arg = saved_prox;
+            }
+
+            /* Segundo passo: emite a chamada de procedimento com o número de parâmetros */
+            char inst[200];
+            sprintf(inst, "call print, %d", num_params);
+            emitir(inst);
+        }
+        // ==========================================================
+        // FLUXO DE CONTROLE (IF, WHILE, FOR)
+        // ==========================================================
+        else if (atual->type == NODE_IF)
+        {
+            char *cond = gerarCodigoIntermediario(atual->esq);
+            if (!cond)
+            {
+                cond = (char *)malloc(2);
+                strcpy(cond, "0");
+            }
+
+            char rotuloFim[20];
+            proximo_rotulo(rotuloFim);
+
+            char inst[200];
+            sprintf(inst, "ifFalse %s goto %s", cond, rotuloFim);
+            emitir(inst);
+            free(cond);
+
+            gerarCodigoIntermediario(atual->dir); // Avalia o que tá dentro do IF
+
+            sprintf(inst, "%s:", rotuloFim);
+            emitir(inst);
+        }
+        else if (atual->type == NODE_WHILE)
+        {
+            char rotuloInicio[20], rotuloFim[20];
+            proximo_rotulo(rotuloInicio);
+            proximo_rotulo(rotuloFim);
+
+            char inst[200];
+            sprintf(inst, "%s:", rotuloInicio);
+            emitir(inst);
+
+            char *cond = gerarCodigoIntermediario(atual->esq);
+            if (!cond)
+            {
+                cond = (char *)malloc(2);
+                strcpy(cond, "0");
+            }
+
+            sprintf(inst, "ifFalse %s goto %s", cond, rotuloFim);
+            emitir(inst);
+            free(cond);
+
+            gerarCodigoIntermediario(atual->dir);
+
+            sprintf(inst, "goto %s", rotuloInicio);
+            emitir(inst);
+
+            sprintf(inst, "%s:", rotuloFim);
+            emitir(inst);
+        }
+        else if (atual->type == NODE_FOR)
+        {
+            char rotuloInicio[20], rotuloFim[20];
+            proximo_rotulo(rotuloInicio);
+            proximo_rotulo(rotuloFim);
+
+            char inst[200];
+
+            sprintf(inst, "%s = 0", atual->lexema);
+            emitir(inst);
+
+            sprintf(inst, "%s:", rotuloInicio);
+            emitir(inst);
+
+            char *limite = gerarCodigoIntermediario(atual->esq);
+            if (!limite)
+            {
+                limite = (char *)malloc(2);
+                strcpy(limite, "0");
+            }
+
+            char *temp_cond = (char *)malloc(100);
+            novo_temp(temp_cond);
+            sprintf(inst, "%s = %s < %s", temp_cond, atual->lexema, limite);
+            emitir(inst);
+
+            sprintf(inst, "ifFalse %s goto %s", temp_cond, rotuloFim);
+            emitir(inst);
+
+            gerarCodigoIntermediario(atual->dir);
+
+            char *temp_inc = (char *)malloc(100);
+            novo_temp(temp_inc);
+            sprintf(inst, "%s = %s + 1", temp_inc, atual->lexema);
+            emitir(inst);
+            sprintf(inst, "%s = %s", atual->lexema, temp_inc);
+            emitir(inst);
+
+            sprintf(inst, "goto %s", rotuloInicio);
+            emitir(inst);
+            sprintf(inst, "%s:", rotuloFim);
+            emitir(inst);
+
+            free(limite);
+            free(temp_cond);
+            free(temp_inc);
+        }
+
+        // Limpa a memória pra não vazar e salva o valor final deste nó
+        if (last_val)
+            free(last_val);
+        last_val = current_val;
+
+        // Pula pra a próxima instrução (if, while, etc.) sem abortar!
+        atual = atual->prox;
+    }
+
+    // Só envia o valor pra cima quando a lista inteira terminar
+    return last_val;
 }
 
 // FIRST(STATEMENT)
@@ -1496,264 +1868,452 @@ int in_F_TERM()
             lookahead.tipo == T_LEN || lookahead.tipo == T_INPUT);
 }
 
-void START();
-void STATEMENTS();
-void STATEMENTS_PRIME();
-void STATEMENT();
-void ASSIGN_OR_EXPR();
-void IF_STATEMENT();
-void IF_START();
-void IF_TAIL();
-void ELIF_STATEMENTS();
-void ELIF_STATEMENT();
-void ELIF_STATEMENTS_PRIME();
-void ELIF_TAIL();
-void WHILE_STATEMENT();
-void FOR_STATEMENT();
-char* EXPRESSION();
-char* EXPRESSION_PRIME(char* ladoEsquerdo);
-char* ELEMENTS_OPT();
-char* ELEMENTS_TAIL(char* elementoAnterior);
-void ASSIGN_OR_EXPR_TAIL(char* ladoEsquerdo);
-void COMMAND_STATEMENT();
-void INDEX_OPT();
-char* TERM();
+DAGnode *START();
+DAGnode *STATEMENTS();
+DAGnode *STATEMENTS_PRIME();
+DAGnode *STATEMENT();
+DAGnode *ASSIGN_OR_EXPR();
+DAGnode *ASSIGN_OR_EXPR_TAIL(char *ladoEsquerdo, DAGnode *index);
+DAGnode *IF_STATEMENT();
+DAGnode *IF_START();
+void IF_TAIL(DAGnode *no_if);
+DAGnode *ELIF_STATEMENTS();
+void ELIF_TAIL(DAGnode *no_elif);
+DAGnode *WHILE_STATEMENT();
+DAGnode *FOR_STATEMENT();
+DAGnode *EXPRESSION();
+DAGnode *EXPRESSION_PRIME(DAGnode *ladoEsquerdo);
+DAGnode *TERM();
+DAGnode *COMMAND_STATEMENT();
+DAGnode *INDEX_OPT();
 void LIST();
 void TUPLE_OR_GROUP();
+void ELEMENTS_OPT();
+void ELEMENTS_TAIL();
 // ==============================================================================
 // ANALISADOR SINTÁTICO RECURSIVO DESCENDENTE PREDITIVO
 // ==============================================================================
+
+DAGnode *raizPrograma = NULL;
 
 void analisadorSintatico()
 {
     posicaoAtual = 0;
     lookahead = analisadorLexico();
-    START();
+    raizPrograma = START();
 }
 
-void START()
+DAGnode *START()
 {
-    // FIRST(START) = F_STMT. FOLLOW(START) = { EOS }. Deriva: STATEMENTS EOS
-    STATEMENTS();
+    DAGnode *raiz = STATEMENTS();
     consome(EOS, NULL);
+    return raiz;
 }
 
-void STATEMENTS()
+DAGnode *STATEMENTS()
 {
-    // FIRST(STATEMENTS) = F_STMT. Deriva: STATEMENT STATEMENTS_PRIME
-    STATEMENT();
-    STATEMENTS_PRIME();
+    DAGnode *primeiro = STATEMENT();
+    DAGnode *resto = STATEMENTS_PRIME();
+
+    if (primeiro != NULL)
+    {
+        primeiro->prox = resto;
+        return primeiro;
+    }
+    return resto;
 }
 
-void STATEMENTS_PRIME()
+DAGnode *STATEMENTS_PRIME()
 {
-    // FIRST(STATEMENTS_PRIME) = F_STMT U { EPSILON }. FOLLOW(STATEMENTS_PRIME) = { EOS }
     if (in_F_STMT())
     {
-        STATEMENTS();
+        return STATEMENTS();
     }
-    // else EPSILON
+    return NULL; // EPSILON
 }
 
-void STATEMENT()
+DAGnode *STATEMENT()
 {
-    // FIRST(STATEMENT) = F_STMT. Deriva: IF_STATEMENT | WHILE_STATEMENT | FOR_STATEMENT | COMMAND_STATEMENT | ASSIGN_OR_EXPR
     if (lookahead.tipo == T_IF)
     {
-        IF_STATEMENT();
+        return IF_STATEMENT();
     }
     else if (lookahead.tipo == T_WHILE)
     {
-        WHILE_STATEMENT();
+        return WHILE_STATEMENT();
     }
     else if (lookahead.tipo == T_FOR)
     {
-        FOR_STATEMENT();
+        return FOR_STATEMENT();
     }
     else if (lookahead.tipo == T_PRINT || lookahead.tipo == T_BREAK ||
              lookahead.tipo == T_CONTINUE || lookahead.tipo == T_RETURN ||
              lookahead.tipo == T_EXEC || lookahead.tipo == T_RAISE ||
              lookahead.tipo == T_INPUT)
     {
-        COMMAND_STATEMENT();
+        return COMMAND_STATEMENT();
     }
     else if (lookahead.tipo == IDENTIFICADOR || lookahead.tipo == NUMERO ||
              lookahead.tipo == LITERAL ||
              (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0))
     {
-
-        ASSIGN_OR_EXPR();
+        return ASSIGN_OR_EXPR();
     }
     else
     {
         erroSintatico("Token inesperado no inicio de um statement");
+        return NULL;
     }
 }
 
-void ASSIGN_OR_EXPR() {
-    if (lookahead.tipo == IDENTIFICADOR) {
-        // Correção: Alocação dinâmica para pertencer ao ciclo do 'free()'
-        char* variavelEsq = (char*)malloc(100 * sizeof(char));
-        strcpy(variavelEsq, lookahead.lexema); 
+DAGnode *ASSIGN_OR_EXPR()
+{
+    if (lookahead.tipo == IDENTIFICADOR)
+    {
+        char id_lexema[100];
+        strcpy(id_lexema, lookahead.lexema);
         consome(IDENTIFICADOR, NULL);
-        
-        INDEX_OPT(); 
-        
-        ASSIGN_OR_EXPR_TAIL(variavelEsq);
-        
-    } else if (lookahead.tipo == NUMERO) {
-        char* num = (char*)malloc(100 * sizeof(char));
-        strcpy(num, lookahead.lexema);
+
+        // Verifica se há acesso a vetor (ex: x[i])
+        DAGnode *index = INDEX_OPT();
+        return ASSIGN_OR_EXPR_TAIL(id_lexema, index);
+    }
+    else if (lookahead.tipo == NUMERO)
+    {
+        DAGnode *num = criarNo(NODE_NUMERO, lookahead.lexema);
         consome(NUMERO, NULL);
-        
-        // Pega o resultado da expressão e libera para não dar vazamento de memória
-        char* res = EXPRESSION_PRIME(num);
-        if (res != NULL) free(res);
-        
-    } else if (lookahead.tipo == LITERAL) {
-        char* lit = (char*)malloc(100 * sizeof(char));
-        strcpy(lit, lookahead.lexema);
+        return EXPRESSION_PRIME(num);
+    }
+    else if (lookahead.tipo == LITERAL)
+    {
+        DAGnode *lit = criarNo(NODE_VARIAVEL, lookahead.lexema);
         consome(LITERAL, NULL);
-        
-        char* res = EXPRESSION_PRIME(lit);
-        if (res != NULL) free(res);
-        
-    } else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0) {
+        return EXPRESSION_PRIME(lit);
+    }
+    else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0)
+    {
         consome(DELIMITER, "(");
-        char* expr = EXPRESSION();
+        DAGnode *expr = EXPRESSION();
         consome(DELIMITER, ")");
-        
-        char* res = EXPRESSION_PRIME(expr);
-        if (res != NULL) free(res);
+        return EXPRESSION_PRIME(expr);
     }
+    return NULL;
 }
 
-void ASSIGN_OR_EXPR_TAIL(char* ladoEsquerdo) {
-    if (lookahead.tipo == ATRIBUICAO) {
+DAGnode *ASSIGN_OR_EXPR_TAIL(char *ladoEsquerdo, DAGnode *index)
+{
+    if (lookahead.tipo == ATRIBUICAO)
+    {
         consome(ATRIBUICAO, NULL);
-        
-        char* ladoDireito = EXPRESSION();
-        
-        char instrucao[200];
-        sprintf(instrucao, "%s = %s", ladoEsquerdo, ladoDireito);
-        emitir(instrucao);
-        
-        // Limpa os dois ponteiros após emitir a instrução final
-        if (ladoDireito != NULL) free(ladoDireito);
-        if (ladoEsquerdo != NULL) free(ladoEsquerdo); 
-        
-    } else {
-        // Se era apenas uma expressão "solta" no código (como: "g + a")
-        // O prime resolve, emite os temps e nós apenas limpamos o resultado final
-        char* res = EXPRESSION_PRIME(ladoEsquerdo);
-        if (res != NULL) free(res);
+        DAGnode *valDir = EXPRESSION();
+
+        if (index != NULL)
+        {
+            // Atribuição Indexada: x[i] = y
+            DAGnode *noAtribIdx = criarNo(NODE_ATRIBUICAO_INDEXADA, ladoEsquerdo);
+            noAtribIdx->esq = index;
+            noAtribIdx->dir = valDir;
+            return noAtribIdx;
+        }
+        else
+        {
+            // Cópia Normal: x = y
+            DAGnode *noAtrib = criarNo(NODE_ATRIBUICAO, ladoEsquerdo);
+            noAtrib->dir = valDir;
+            return noAtrib;
+        }
+    }
+    else
+    {
+        // Apenas expressão matemática
+        DAGnode *noEsq;
+        if (index != NULL)
+        {
+            // Leitura indexada: t1 = y[i]
+            noEsq = criarNo(NODE_INDEX_GET, ladoEsquerdo);
+            noEsq->esq = index;
+        }
+        else
+        {
+            // Variável simples: y
+            noEsq = criarNo(NODE_VARIAVEL, ladoEsquerdo);
+        }
+        return EXPRESSION_PRIME(noEsq);
     }
 }
 
-void IF_STATEMENT()
+DAGnode *IF_STATEMENT()
 {
-    // FIRST(IF_STATEMENT) = { if }. Deriva: IF_START IF_TAIL
-    IF_START();
-    IF_TAIL();
+    return IF_START();
 }
 
-void IF_START()
+DAGnode *IF_START()
 {
-    // FIRST(IF_START) = { if }. Deriva: if EXPRESSION : STATEMENT
     consome(T_IF, NULL);
-    EXPRESSION();
+    DAGnode *no_if = criarNo(NODE_IF, "if");
+    no_if->esq = EXPRESSION();
     consome(DELIMITER, ":");
-    STATEMENT();
+    no_if->dir = STATEMENT();
+    IF_TAIL(no_if);
+    return no_if;
 }
 
-void IF_TAIL()
+void IF_TAIL(DAGnode *no_if)
 {
-    // FIRST(IF_TAIL) = { else, elif, EPSILON }. FOLLOW(IF_TAIL) = FL_STMT
     if (lookahead.tipo == T_ELSE)
     {
         consome(T_ELSE, NULL);
         consome(DELIMITER, ":");
-        STATEMENT();
+        no_if->body_else = STATEMENT();
     }
     else if (lookahead.tipo == T_ELIF)
     {
-        ELIF_STATEMENTS();
-        STATEMENT();
-        ELIF_TAIL();
+        no_if->body_else = ELIF_STATEMENTS();
     }
     // else EPSILON
 }
 
-void ELIF_TAIL()
+DAGnode *ELIF_STATEMENTS()
 {
-    // FIRST(ELIF_TAIL) = { else, EPSILON }. FOLLOW(ELIF_TAIL) = FL_STMT
+    DAGnode *no_elif = criarNo(NODE_IF, "elif");
+    consome(T_ELIF, NULL);
+    no_elif->esq = EXPRESSION();
+    consome(DELIMITER, ":");
+    no_elif->dir = STATEMENT();
+    ELIF_TAIL(no_elif);
+    return no_elif;
+}
+
+void ELIF_TAIL(DAGnode *no_elif)
+{
     if (lookahead.tipo == T_ELSE)
     {
         consome(T_ELSE, NULL);
         consome(DELIMITER, ":");
-        STATEMENT();
+        no_elif->body_else = STATEMENT();
     }
-    // else EPSILON
-}
-
-void ELIF_STATEMENTS()
-{
-    // FIRST(ELIF_STATEMENTS) = { elif }. Deriva: ELIF_STATEMENT ELIF_STATEMENTS_PRIME
-    ELIF_STATEMENT();
-    ELIF_STATEMENTS_PRIME();
-}
-
-void ELIF_STATEMENT()
-{
-    // FIRST(ELIF_STATEMENT) = { elif }. Deriva: elif EXPRESSION : STATEMENT
-    consome(T_ELIF, NULL);
-    EXPRESSION();
-    consome(DELIMITER, ":");
-    STATEMENT();
-}
-
-void ELIF_STATEMENTS_PRIME()
-{
-    // FIRST(ELIF_STATEMENTS_PRIME) = { elif, EPSILON }. FOLLOW(ELIF_STATEMENTS_PRIME) = F_STMT
-    if (lookahead.tipo == T_ELIF)
+    else if (lookahead.tipo == T_ELIF)
     {
-        ELIF_STATEMENTS();
+        no_elif->body_else = ELIF_STATEMENTS();
     }
     // else EPSILON
 }
 
-void WHILE_STATEMENT()
+DAGnode *WHILE_STATEMENT()
 {
-    // FIRST(WHILE_STATEMENT) = { while }. Deriva: while EXPRESSION : STATEMENT
     consome(T_WHILE, NULL);
-    EXPRESSION();
+    DAGnode *no_while = criarNo(NODE_WHILE, "while");
+    no_while->esq = EXPRESSION();
     consome(DELIMITER, ":");
-    STATEMENT();
+    no_while->dir = STATEMENT();
+    return no_while;
 }
 
-void FOR_STATEMENT()
+DAGnode *FOR_STATEMENT()
 {
-    // FIRST(FOR_STATEMENT) = { for }. Deriva: for IDENTIFICADOR in range ( EXPRESSION ) : STATEMENT
     consome(T_FOR, NULL);
+    char id_iterador[100];
+    strcpy(id_iterador, lookahead.lexema);
     consome(IDENTIFICADOR, NULL);
     consome(OP_RELACIONAL, "in");
     consome(T_RANGE, NULL);
     consome(DELIMITER, "(");
-    EXPRESSION();
+
+    DAGnode *no_for = criarNo(NODE_FOR, id_iterador);
+    no_for->esq = EXPRESSION();
+
     consome(DELIMITER, ")");
     consome(DELIMITER, ":");
-    STATEMENT();
+    no_for->dir = STATEMENT();
+    return no_for;
 }
 
-void COMMAND_STATEMENT()
+DAGnode *COMMAND_STATEMENT()
 {
-    // FIRST(COMMAND_STATEMENT) = { print, break, continue, return, exec, raise, input }
+
     if (lookahead.tipo == T_PRINT)
     {
         consome(T_PRINT, NULL);
         consome(DELIMITER, "(");
-        ELEMENTS_OPT();
+        DAGnode *no_print = criarNo(NODE_PRINT, "print");
+        if (in_F_TERM())
+        {
+            DAGnode *arg = EXPRESSION();
+            no_print->dir = arg;
+            DAGnode *ultimo = arg;
+
+            while (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, ",") == 0)
+            {
+                consome(DELIMITER, ",");
+                DAGnode *proximo_arg = EXPRESSION();
+                if (ultimo != NULL)
+                    ultimo->prox = proximo_arg;
+                ultimo = proximo_arg;
+            }
+        }
+
         consome(DELIMITER, ")");
+        return no_print;
+    }
+    // Comandos ignorados na Geração de Código de 3-Endereços (não há funções)
+    else if (lookahead.tipo == T_INPUT)
+    {
+        consome(T_INPUT, NULL);
+        consome(DELIMITER, "(");
+        consome(LITERAL, NULL);
+        consome(DELIMITER, ")");
+        return criarNo(NODE_IGNORAR, "input");
+    }
+    else if (lookahead.tipo == T_BREAK)
+    {
+        consome(T_BREAK, NULL);
+        return criarNo(NODE_IGNORAR, "break");
+    }
+    else if (lookahead.tipo == T_CONTINUE)
+    {
+        consome(T_CONTINUE, NULL);
+        return criarNo(NODE_IGNORAR, "continue");
+    }
+    else if (lookahead.tipo == T_RETURN)
+    {
+        consome(T_RETURN, NULL);
+        DAGnode *expr = EXPRESSION();
+        if (expr)
+            free(expr); // Ignora a avaliação para evitar vazamento
+        return criarNo(NODE_IGNORAR, "return");
+    }
+    else if (lookahead.tipo == T_EXEC)
+    {
+        consome(T_EXEC, NULL);
+        DAGnode *expr = EXPRESSION();
+        if (expr)
+            free(expr);
+        return criarNo(NODE_IGNORAR, "exec");
+    }
+    else if (lookahead.tipo == T_RAISE)
+    {
+        consome(T_RAISE, NULL);
+        DAGnode *expr = EXPRESSION();
+        if (expr)
+            free(expr);
+        return criarNo(NODE_IGNORAR, "raise");
+    }
+    return NULL;
+}
+
+DAGnode *INDEX_OPT()
+{
+    if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "[") == 0)
+    {
+        consome(DELIMITER, "[");
+        DAGnode *exprIndex = EXPRESSION();
+        consome(DELIMITER, "]");
+        INDEX_OPT();
+        return exprIndex;
+    }
+    return NULL; // EPSILON
+}
+
+DAGnode *EXPRESSION()
+{
+    DAGnode *termo_esq = TERM();
+    return EXPRESSION_PRIME(termo_esq);
+}
+
+DAGnode *EXPRESSION_PRIME(DAGnode *ladoEsquerdo)
+{
+    if (lookahead.tipo == OP_ARITMETICO || lookahead.tipo == OP_RELACIONAL)
+    {
+        DAGnode *noOp = criarNo(NODE_OPERACAO, lookahead.lexema);
+        consome(lookahead.tipo, NULL);
+
+        noOp->esq = ladoEsquerdo;
+        noOp->dir = TERM();
+
+        return EXPRESSION_PRIME(noOp);
+    }
+    return ladoEsquerdo; // EPSILON
+}
+
+DAGnode *TERM()
+{
+    if (lookahead.tipo == IDENTIFICADOR)
+    {
+        char lexema[100];
+        strcpy(lexema, lookahead.lexema);
+        consome(IDENTIFICADOR, NULL);
+
+        DAGnode *index = INDEX_OPT();
+        if (index != NULL)
+        {
+            DAGnode *noIndexGet = criarNo(NODE_INDEX_GET, lexema);
+            noIndexGet->esq = index;
+            return noIndexGet;
+        }
+        else
+        {
+            return criarNo(NODE_VARIAVEL, lexema);
+        }
+    }
+    else if (lookahead.tipo == NUMERO)
+    {
+        DAGnode *no = criarNo(NODE_NUMERO, lookahead.lexema);
+        consome(NUMERO, NULL);
+        return no;
+    }
+    else if (lookahead.tipo == LITERAL)
+    {
+        DAGnode *no = criarNo(NODE_VARIAVEL, lookahead.lexema);
+        consome(LITERAL, NULL);
+        return no;
+    }
+    else if (lookahead.tipo == T_TRUE)
+    {
+        DAGnode *no = criarNo(NODE_NUMERO, "1"); // Booleano vira numérico
+        consome(T_TRUE, NULL);
+        return no;
+    }
+    else if (lookahead.tipo == T_FALSE)
+    {
+        DAGnode *no = criarNo(NODE_NUMERO, "0");
+        consome(T_FALSE, NULL);
+        return no;
+    }
+    else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "[") == 0)
+    {
+        LIST();
+        return criarNo(NODE_IGNORAR, "lista");
+    }
+    else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0)
+    {
+        consome(DELIMITER, "(");
+        DAGnode *expr = NULL;
+
+        if (in_F_TERM())
+        {
+            expr = EXPRESSION(); // Pega a matemática dentro dos parênteses!
+
+            // Se for uma Tupla (ex: True, False), descarta o resto para o código intermediário
+            while (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, ",") == 0)
+            {
+                consome(DELIMITER, ",");
+                DAGnode *extra = EXPRESSION();
+                if (extra)
+                    free(extra);
+            }
+        }
+        consome(DELIMITER, ")");
+        return expr ? expr : criarNo(NODE_IGNORAR, "grupo_vazio");
+    }
+    else if (lookahead.tipo == T_LEN)
+    {
+        consome(T_LEN, NULL);
+        consome(DELIMITER, "(");
+        DAGnode *expr = EXPRESSION();
+        if (expr)
+            free(expr); // Ignora a leitura do parâmetro interno no código 3D
+        consome(DELIMITER, ")");
+        return criarNo(NODE_IGNORAR, "len");
     }
     else if (lookahead.tipo == T_INPUT)
     {
@@ -1761,178 +2321,10 @@ void COMMAND_STATEMENT()
         consome(DELIMITER, "(");
         consome(LITERAL, NULL);
         consome(DELIMITER, ")");
+        return criarNo(NODE_IGNORAR, "input");
     }
-    else if (lookahead.tipo == T_BREAK)
+    else
     {
-        consome(T_BREAK, NULL);
-    }
-    else if (lookahead.tipo == T_CONTINUE)
-    {
-        consome(T_CONTINUE, NULL);
-    }
-    else if (lookahead.tipo == T_RETURN)
-    {
-        consome(T_RETURN, NULL);
-        EXPRESSION();
-    }
-    else if (lookahead.tipo == T_EXEC)
-    {
-        consome(T_EXEC, NULL);
-        EXPRESSION();
-    }
-    else if (lookahead.tipo == T_RAISE)
-    {
-        consome(T_RAISE, NULL);
-        EXPRESSION();
-    }
-}
-
-void INDEX_OPT()
-{
-    // FIRST(INDEX_OPT) = { '[', EPSILON }. FOLLOW(INDEX_OPT) = FL_STMT U { '=', ':', ')', ']', ',', OPERATOR }
-    // INDEX_OPT.TYPEDATA = [ EXPRESSION.TYPEDATA ] INDEX_OPT.TYPEDATA
-    if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "[") == 0)
-    {
-        consome(DELIMITER, "[");
-        EXPRESSION(); // EXPRESSION.TYPEDATA
-        consome(DELIMITER, "]");
-        INDEX_OPT(); // INDEX_OPT.TYPEDATA
-    }
-    // else EPSILON
-}
-
-char* EXPRESSION() {
-    char* termo_esq = TERM(); // Ex: Pega "a"
-    char* resultado = EXPRESSION_PRIME(termo_esq); // Avalia se tem "+ b"
-    return resultado;
-}
-
-char* EXPRESSION_PRIME(char* ladoEsquerdo) {
-    if (lookahead.tipo == OP_ARITMETICO || lookahead.tipo == OP_RELACIONAL) {
-        char op[10];
-        strcpy(op, lookahead.lexema); // Salva o operador (+, -, *, <)
-        consome(lookahead.tipo, NULL);
-        
-        // Avalia quem é o lado direito da operação
-        char* ladoDireito = TERM();
-        
-        // Aloca espaço para a nova variável temporária
-        char* temp = (char*)malloc(100 * sizeof(char));
-        novo_temp(temp); // Gera "t1", "t2", etc.
-        
-        // GERA CÓDIGO INTERMEDIÁRIO! (Ex: "t1 = a + b")
-        char instrucao[200];
-        sprintf(instrucao, "%s = %s %s %s", temp, ladoEsquerdo, op, ladoDireito);
-        emitir(instrucao);
-        
-        // Libera a memória usada pelos operandos anteriores
-        if (ladoEsquerdo != NULL) free(ladoEsquerdo);
-        if (ladoDireito != NULL) free(ladoDireito);
-        
-        // RECURSÃO: O temporário recém-criado vira o "lado esquerdo" da próxima conta!
-        // Isso resolve contas longas: a + b + c -> t1 = a + b -> t2 = t1 + c
-        return EXPRESSION_PRIME(temp);
-    }
-    
-    // else EPSILON
-    // Se não tem operador matemático, a expressão acabou. Retorna o que recebeu.
-    return ladoEsquerdo;
-}
-
-// Agora a função retorna um char* representando a variável ou o temporário 'tX' gerado
-char* TERM() {
-    // Alocamos memória dinamicamente para suportar recursões profundas (ex: parênteses aninhados)
-    char* resultado = (char*)malloc(100 * sizeof(char));
-    
-    if (lookahead.tipo == IDENTIFICADOR) {
-        strcpy(resultado, lookahead.lexema);
-        consome(IDENTIFICADOR, NULL);
-        
-        // Se houver um índice (ex: vetor[i]), no futuro você emitirá algo como: t1 = vetor[i]
-        INDEX_OPT(); 
-        return resultado;
-        
-    } else if (lookahead.tipo == NUMERO) {
-        strcpy(resultado, lookahead.lexema);
-        consome(NUMERO, NULL);
-        return resultado;
-        
-    } else if (lookahead.tipo == LITERAL) {
-        strcpy(resultado, lookahead.lexema);
-        consome(LITERAL, NULL);
-        return resultado;
-        
-    } else if (lookahead.tipo == T_TRUE) {
-        strcpy(resultado, "True");
-        consome(T_TRUE, NULL);
-        return resultado;
-        
-    } else if (lookahead.tipo == T_FALSE) {
-        strcpy(resultado, "False");
-        consome(T_FALSE, NULL);
-        return resultado;
-        
-    } else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "[") == 0) {
-        consome(DELIMITER, "[");
-        ELEMENTS_OPT(); // Futuramente adaptado para processar itens da lista
-        consome(DELIMITER, "]");
-        
-        // Na geração de código, criar uma lista geralmente aloca um ponteiro temporário
-        novo_temp(resultado); 
-        return resultado;
-        
-    } else if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, "(") == 0) {
-        // Substituímos a chamada pura de TUPLE_OR_GROUP() pela lógica embutida
-        // para podermos capturar o retorno da expressão matemática interna.
-        consome(DELIMITER, "(");
-        
-        // Avalia a expressão dentro dos parênteses (ex: a + b gera t1).
-        // Nota: ELEMENTS_OPT precisará ser alterado para retornar char* também!
-        char* temp = ELEMENTS_OPT(); 
-        
-        strcpy(resultado, temp);
-        free(temp); // Libera o ponteiro da chamada filha para não vazar memória
-        
-        consome(DELIMITER, ")");
-        return resultado;
-        
-    } else if (lookahead.tipo == T_LEN) {
-        consome(T_LEN, NULL);
-        consome(DELIMITER, "(");
-        
-        // Avalia o que está dentro da função len()
-        char* temp_expr = EXPRESSION(); 
-        consome(DELIMITER, ")");
-        
-        // GERAÇÃO DE CÓDIGO INTERMEDIÁRIO: tX = len(temp_expr)
-        novo_temp(resultado);
-        char instrucao[100];
-        sprintf(instrucao, "%s = len(%s)", resultado, temp_expr);
-        emitir(instrucao);
-        
-        free(temp_expr);
-        return resultado;
-        
-    } else if (lookahead.tipo == T_INPUT) {
-        consome(T_INPUT, NULL);
-        consome(DELIMITER, "(");
-        
-        // Pega a string usada de prompt no input
-        char literal_str[100];
-        strcpy(literal_str, lookahead.lexema); 
-        consome(LITERAL, NULL);
-        
-        consome(DELIMITER, ")");
-        
-        // GERAÇÃO DE CÓDIGO INTERMEDIÁRIO: tX = input("...")
-        novo_temp(resultado);
-        char instrucao[100];
-        sprintf(instrucao, "%s = input(%s)", resultado, literal_str);
-        emitir(instrucao);
-        
-        return resultado;
-        
-    } else {
         erroSintatico("Esperado um TERM (Identificador, Numero, String, Tupla, Lista, etc)");
         return NULL;
     }
@@ -1940,50 +2332,41 @@ char* TERM() {
 
 void LIST()
 {
-    // FIRST(LIST) = { '[' }. Deriva: [ ELEMENTS_OPT ]
     consome(DELIMITER, "[");
-
     ELEMENTS_OPT();
     consome(DELIMITER, "]");
 }
 
 void TUPLE_OR_GROUP()
 {
-    // FIRST(TUPLE_OR_GROUP) = { '(' }. Deriva: ( ELEMENTS_OPT )
     consome(DELIMITER, "(");
     ELEMENTS_OPT();
     consome(DELIMITER, ")");
 }
 
-char* ELEMENTS_OPT() {
-    if (in_F_TERM()) {
-        // Processa o primeiro argumento
-        char* expr = EXPRESSION();
-        
-        // Manda o resultado para a cauda (para verificar se há vírgulas)
-        return ELEMENTS_TAIL(expr);
+void ELEMENTS_OPT()
+{
+    if (in_F_TERM())
+    {
+        DAGnode *exp = EXPRESSION();
+        if (exp)
+            free(exp); // Previne vazamentos de memória nas coisas ignoradas
+        ELEMENTS_TAIL();
     }
-    
     // else EPSILON
-    char* vazio = (char*)malloc(2 * sizeof(char));
-    strcpy(vazio, "");
-    return vazio;
 }
 
-char* ELEMENTS_TAIL(char* elementoAnterior) {
-    if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, ",") == 0) {
+void ELEMENTS_TAIL()
+{
+    if (lookahead.tipo == DELIMITER && strcmp(lookahead.lexema, ",") == 0)
+    {
         consome(DELIMITER, ",");
-        
-        // Opcional: Aqui você emitiria algo como "param t1" se fossem funções reais
-        // Mas por enquanto, apenas garantimos a geração de código do próximo argumento
-        char* prox_expr = EXPRESSION();
-        
-        // Propaga o fluxo processando recursivamente as próximas vírgulas
-        return ELEMENTS_TAIL(prox_expr);
+        DAGnode *exp = EXPRESSION();
+        if (exp)
+            free(exp);
+        ELEMENTS_TAIL();
     }
-    
     // else EPSILON
-    return elementoAnterior;
 }
 
 int main(int argc, char **argv)
@@ -1996,7 +2379,7 @@ int main(int argc, char **argv)
     else if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)
     {
         printf("Uso: %s <arquivo_fonte.mp>\n", argv[0]);
-        printf("Analisa lexica e sintaticamente um arquivo fonte em Mini-Python.\n");
+        printf("Analisa lexica, sintatica e semanticamente um arquivo fonte em Mini-Python.\n");
         return 0;
     }
     else if (argc > 2)
@@ -2011,29 +2394,44 @@ int main(int argc, char **argv)
     // Carrega os lexemas do arquivo na array e suas linhas correspondentes no mapa
     totalLexemasGlob = lexemas(filename, lexemasArray, mapaLinhasGlobais);
 
-    // arrayPrinter(lexemasArray,totalLexemasGlob);
-
     if (totalLexemasGlob >= 0)
     {
-        printf("===== INICIANDO ANALISE LEXICASIN, SINTATICA E SEMANTICA =====\n");
+        printf("===== INICIANDO ANALISE LEXICA, SINTATICA E SEMANTICA =====\n");
 
-        // 2. ABRE O ARQUIVO DE SAÍDA PARA O CÓDIGO INTERMEDIÁRIO
+        // 1. INICIA O PARSER E A FILA SEMÂNTICA
+        // Aqui, a Grafo Acíclico Direcionado (DAG) será construída e armazenada na global 'raizPrograma'
+        // Ao mesmo tempo, a Fila Semântica validará os tipos linha por linha.
+        analisadorSintatico();
+
+        // 2. VERIFICAÇÃO SEMÂNTICA FINAL
+        // Checa se alguma variável recebeu valor e nunca foi lida.
+        if(possuiVarNaoUtilizada()){
+            printf("\nSemantica apresentou falhas!!!\n");
+            exit(1);
+        }else{
+            printf("\n> SUCESSO: Analises Sintatica e Semantica concluidas!\n");
+        }
+        
+        printf("> Nenhuma quebra de tipagem encontrada. A gramatica do arquivo e valida.\n");
+
+        printTabelaSimbolos();
+
+        // 3. GERAÇÃO DO CÓDIGO INTERMEDIÁRIO 
         code_output = fopen("codigo_intermediario.txt", "w");
-        if (code_output == NULL) {
+
+        if (code_output == NULL)
+        {
             printf("Erro ao criar o arquivo de codigo intermediario.\n");
             return 1;
         }
 
-        // Inicia a análise sintática
-        analisadorSintatico();
+        if (raizPrograma != NULL)
+        {
+            gerarCodigoIntermediario(raizPrograma);
+        }
 
-        fclose(code_output); // Fecha o arquivo de código intermediário após a análise
-
-        printf("\n> SUCESSO: Analise Sintatica concluida! A gramatica do arquivo eh valida.\n");
-        printTabelaSimbolos();
-
-        // Verifica se há variáveis declaradas mas não utilizadas
-        possuiVarNaoUtilizada();
+        fclose(code_output);
+        printf("\n> O codigo intermediario (3 enderecos) foi gerado no arquivo 'codigo_intermediario.txt'.\n");
     }
     else
     {

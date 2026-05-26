@@ -19,7 +19,7 @@ if maior2 == True :
 
 vetorList = [ 2 , 3 , 5 , 7 , 11 ]
  
-i = 0
+# erro semântico porque i não foi inicializado
 while i < len ( vetorList ) :
     print ( vetorList [ i ] )
     i = i + 1
