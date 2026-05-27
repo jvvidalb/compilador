@@ -120,34 +120,6 @@ ELEMENTS_TAIL -> , EXPRESSION ELEMENTS_TAIL | ε
  * ==============================================================================
  */
 
-/*
- *==============================================================================
- * GRAMATICA ESTENDIDA (deu errado, god save me!!!!)
- * ==============================================================================
- *
- * ASSIGN_OR_EXPR.TYPEDATA = IDENTIFICADOR.TYPEDATA INDEX_OPT.TYPEDATA ASSIGN_OR_EXPR_TAIL.TYPEDATA
- * ASSIGN_OR_EXPR.INTEIRO = NUMERO.INTEIRO EXPRESSION_PRIME.INTEIRO
- * ASSIGN_OR_EXPR.TYPEDATA = ( EXPRESSION.TYPEDATA ) EXPRESSION_PRIME.TYPEDATA
- *
- * INDEX_OPT.TYPEDATA = [ EXPRESSION.TYPEDATA ] INDEX_OPT.TYPEDATA
- *
- * ASSIGN_OR_EXPR_TAIL.TYPEDATA = EXPRESSION.TYPEDATA
- *
- * EXPRESSION.TYPEDATA = TERM.TYPEDATA EXPRESSION_PRIME.TYPEDATA
- *
- * EXPRESSION_PRIME.TYPEDATA  = OPERATOR.TYPEDATA TERM.TYPEDATA EXPRESSION_PRIME.TYPEDATA
- *
- * TERM.TYPEDATA = IDENTIFICADOR.TYPEDATA INDEX_OPT.TYPEDATA
- * TERM.INTEIRO = NUMERO.INTEIRO
- * TERM.BOOLEANO = TRUE.BOOLEANO
- * TERM.BOOLEANO = FALSE.BOOLEANO
- * TERM.TYPEDATA = LIST.TYPEDATA
- * TERM.TYPEDATA = TUPLE_OR_GROUP.TYPEDATA
- * LIST.TYPEDATA =  ELEMENTS_OPT.TYPEDATA
- * TUPLE_OR_GROUP.TYPEDATA = ELEMENTS_OPT.TYPEDATA
- * ELEMENTS_OPT.TYPEDATA = EXPRESSION.TYPEDATA ELEMENTS_TAIL.TYPEDATA
- * ELEMENTS_TAIL.TYPEDATA = EXPRESSION.TYPEDATA ELEMENTS_TAIL.TYPEDATA
- */
 
 /*
  * ANÁLISE SEMÂNTICA
@@ -193,6 +165,8 @@ ELEMENTS_TAIL -> , EXPRESSION ELEMENTS_TAIL | ε
  * 3   → tipoUltimaExpressao = INTEIRO
  * fim → flag->tipo = INTEIRO, flag = NULL
  */
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -204,7 +178,7 @@ typedef enum
     IDENTIFICADOR,
     NUMERO,
     LITERAL,
-    EOS, // Fim do arquivo
+    EOS, //fim da sequencia
     COMMENT,
     OP_RELACIONAL,
     OP_ARITMETICO,
@@ -277,6 +251,9 @@ typedef struct
     NodeFila *tail;
 } FilaSemantica;
 
+
+
+
 // Funções auxiliares
 void enfileirar(FilaSemantica *fila, Token t)
 {
@@ -330,7 +307,7 @@ int filaVazia(FilaSemantica *fila)
     return fila->head == NULL;
 }
 
-// Old Tabela de símbolos
+//tabela de simbolos antiga
 /*typedef struct {
     char valor[100];
     TAtomo tipo;
@@ -366,7 +343,7 @@ FilaSemantica filaSemantica = {NULL, NULL};
 // int totalSimbolos = 0;
 SimboloTabela globalTabela = {NULL, NULL, 0};
 TNo *flag = NULL;    // pega linha da tabela
-TNo *noLocal = NULL; // aponta para a variável declarada dentro de um bloco de controle
+TNo *noLocal = NULL; // aponta para a varivel declarada dentro de um bloco de controle
 int tagLine = 1;
 int totalLexemasGlob = 0;
 int mapaLinhasGlobais[512]; // Adicione esta linha
@@ -421,18 +398,18 @@ int lexemas(const char *filename, char lexemas[512][512], int mapaLinhas[512])
             linha_atual++;
         }
 
-        // Ignora comentários e avança até o fim da linha
+        // Ignora comentários e avança ate o fim da linha
         if (!in_string && c == '#')
         {
             if (buf_idx > 0)
             {
                 buffer[buf_idx] = '\0';
                 strcpy(lexemas[count], buffer);
-                mapaLinhas[count] = linha_inicio_lexema; // Salva a linha do lexema
+                mapaLinhas[count] = linha_inicio_lexema; // aalva a linha do lexema
                 count++;
                 buf_idx = 0;
             }
-            // Pula os caracteres até achar a quebra de linha ou o fim do arquivo
+            // Pula os caracteres ate achar a quebra de linha ou o fim do arquivo
             while ((c = fgetc(file)) != EOF)
             {
                 if (c == '\n')
@@ -444,13 +421,13 @@ int lexemas(const char *filename, char lexemas[512][512], int mapaLinhas[512])
             continue;
         }
 
-        // Se estamos começando a ler um novo lexema, registramos em qual linha ele começou
+        // Se começa a ler um novo lexema, registra em qual linha ele começou
         if (buf_idx == 0 && c != ' ' && c != '\t' && c != '\n' && c != '\r')
         {
             linha_inicio_lexema = linha_atual;
         }
 
-        // Trata strings literais
+        // strings literais
         if (c == '"')
         {
             in_string = !in_string;
@@ -458,7 +435,7 @@ int lexemas(const char *filename, char lexemas[512][512], int mapaLinhas[512])
             continue;
         }
 
-        // Trata espaços em branco fora de strings (separadores)
+        // espaços em branco fora de strings (separadores)
         if (!in_string && (c == ' ' || c == '\t' || c == '\n' || c == '\r'))
         {
             if (buf_idx > 0)
@@ -492,7 +469,7 @@ int lexemas(const char *filename, char lexemas[512][512], int mapaLinhas[512])
     return count;
 }
 
-// Função para adicionar à tabela de símbolos (evita duplicatas)
+// Funcao para adicionar na tabela de simbolos
 void adicionarSimbolo(char *lexema, TAtomo tipo)
 {
     TNo *atual = globalTabela.head;
@@ -507,7 +484,7 @@ void adicionarSimbolo(char *lexema, TAtomo tipo)
         atual = atual->prox;
     }
 
-    // Cria novo nó — calloc zera todos os campos, evitando lixo de memória
+    // Cria novo node para a tabela de símbolos
     TNo *novo = (TNo *)calloc(1, sizeof(TNo));
 
     if (novo == NULL)
@@ -529,17 +506,17 @@ void adicionarSimbolo(char *lexema, TAtomo tipo)
     globalTabela.totalSimbolos++;
 
     novo->prox = NULL;
-    if (globalTabela.head == NULL)
+    if (globalTabela.head == NULL) // if lista vazia
     {
-        // Se a lista está vazia, novo é o head e o tail
+        // novo é o head e tail
         globalTabela.head = novo;
         globalTabela.tail = novo;
     }
     else
     {
-        // Se não está vazia, o atual tail aponta para o novo
+        // Se não esta vazia, o atual tail aponta para o novo
         globalTabela.tail->prox = novo;
-        // E o novo vira o novo tail
+        // novo vira o novo tail
         globalTabela.tail = novo;
     }
 
@@ -570,7 +547,7 @@ void removerSimbolo(char *lexema)
             }
             else
             {
-                // Pular o nó atual
+                // Pular o node atual
                 anterior->prox = atual->prox;
             }
 
@@ -692,7 +669,7 @@ Token *obter_atomo(char *lexema)
     else if (strcmp(lexema, "False") == 0)
         token.tipo = T_FALSE;
 
-    // 4. OPERATORS (Aritméticos e Lógicos conforme o Regex)
+    // 4. OPERATORS (Aritmeticos e Logicos conforme o Regex)
     else if (strcmp(lexema, "**") == 0 || strcmp(lexema, "+") == 0 ||
              strcmp(lexema, "-") == 0 || strcmp(lexema, "*") == 0 ||
              strcmp(lexema, "/") == 0 || strcmp(lexema, "%") == 0 ||
@@ -726,11 +703,11 @@ Token *obter_atomo(char *lexema)
         // Verifica do segundo caractere em diante
         for (int i = 1; lexema[i] != '\0'; i++)
         {
-            // Um identificador válido só pode conter letras, '_' (já coberto pelo isLetra) ou dígitos
+            // Um identificador valido so pode conter letras, '_' (já coberto pelo isLetra) ou dígitos
             if (!isLetra(lexema[i]) && !isDigito(lexema[i]))
             {
                 eh_identificador_valido = 0;
-                break; // Encontrou um intruso (ex: '$', '-'), para a verificação
+                break; // Encontrou um intruso (ex: '$', '-'), para a verificacao
             }
         }
 
@@ -940,9 +917,9 @@ void printToken(Token *token)
         exit(1);
     }
     else if (token->tipo == LITERAL || token->tipo == IDENTIFICADOR ||
-             token->tipo == NUMERO)
+             token->tipo == NUMERO) // se for tipo que vai na tabela
     {
-        TNo *simbolo = encontrarSimbolo(token->lexema);
+        TNo *simbolo = encontrarSimbolo(token->lexema); // acha na tabela
 
         printf("%d# %s | %s\n", token->linha, atomoParaString(token->tipo), simbolo != NULL ? simbolo->cadeia : "NULL");
     }
@@ -987,6 +964,7 @@ void printTabelaSimbolos()
     printf("-------------------------------------------------------------------------------------------------------------\n");
 }
 
+// funcao de debug
 void arrayPrinter(char lexemas[512][512], int count)
 {
     Token *token = obter_atomo(lexemas[posicaoAtual++]);
@@ -1023,12 +1001,12 @@ Token analisadorLexico()
     Token fim;
     fim.tipo = EOS;
     strcpy(fim.lexema, "EOF");
-    // Se o arquivo acabou, a linha do EOF é a última linha lida
+    // se o arquivo acabou, a linha do EOF é a última linha lida
     fim.linha = totalLexemasGlob > 0 ? mapaLinhasGlobais[totalLexemasGlob - 1] : 1;
     return fim;
 }
 
-
+//detalhado no readme
 void analisadorSemantico()
 {
     tipoUltimaExpressao = UNKNOWN;
@@ -1468,15 +1446,15 @@ flag->tipo = BOOLEANO;
 }*/
 
 // Verifica e consome um tipo específico de átomo
-// Função única para consumir tokens: verifica o tipo e, opcionalmente, o lexema exato.
+// função de consumir tokens: verifica o tipo e o lexema exato, caso o tipo exija.
 void consome(TAtomo tipo_esperado, const char *lexema_esperado)
 {
 
     if (lookahead.tipo != EOS)
-        printToken(&lookahead); // Imprime o token atual antes de consumir
+        printToken(&lookahead); // printa o token atual antes de consumir
     if (lookahead.tipo == tipo_esperado)
     {
-        // Se lexema_esperado não for NULL, precisamos garantir que a string exata bate
+        // se lexema_esperado não for NULL, precisa garantir que a string exata bate
         if (lexema_esperado != NULL)
         {
             if (strcmp(lookahead.lexema, lexema_esperado) == 0)
@@ -1509,7 +1487,7 @@ void consome(TAtomo tipo_esperado, const char *lexema_esperado)
         }
         else
         {
-            // Se for NULL, apenas a classe do token (o tipo) importa
+            // se for NULL, apenas o tipo do token importa
             posicaoAtual++;
             if (lookahead.linha == tagLine && lookahead.tipo != EOS)
             {
@@ -1530,7 +1508,7 @@ void consome(TAtomo tipo_esperado, const char *lexema_esperado)
     }
     else
     {
-        // Erro de tipo
+        // erro de tipo
         char msg[256];
         if (lexema_esperado != NULL)
         {
@@ -1544,25 +1522,25 @@ void consome(TAtomo tipo_esperado, const char *lexema_esperado)
     }
 }
 
-// Funcoes auxiliares da geracao de codigo intermediario
+// funcoes auxiliares da geracao de codigo intermediario
 
 int temp_counter = 1;
 int rotulo_counter = 1;
-FILE *code_output = NULL; // O PDF pede para salvar em um arquivo .txt
+FILE *code_output = NULL; // .txt do codigo intermediario
 
-// Gera uma nova variável temporária (t1, t2, t3...)
+// gera uma nova variável temporária 
 void novo_temp(char *buffer)
 {
     sprintf(buffer, "t%d", temp_counter++);
 }
 
-// Gera um novo rótulo (L1, L2, L3...) conforme exigido pelo PDF
+// gera um novo rótulo (L1, L2, L3...) 
 void proximo_rotulo(char *buffer)
 {
     sprintf(buffer, "L%d", rotulo_counter++);
 }
 
-// Função para emitir código para o arquivo texto
+// função para emitir código para o arquivo texto
 void emitir(const char *instrucao)
 {
     fprintf(code_output, "%s\n", instrucao);
@@ -1609,7 +1587,7 @@ char *gerarCodigoIntermediario(DAGnode *no)
         return NULL;
 
     DAGnode *atual = no;
-    char *last_val = NULL; // Armazena o último valor gerado (ex: t1, t2)
+    char *last_val = NULL; // armazena o último valor gerado
 
     while (atual != NULL)
     {
@@ -1617,7 +1595,7 @@ char *gerarCodigoIntermediario(DAGnode *no)
 
         if (atual->type == NODE_IGNORAR)
         {
-            // Não faz nada, apenas prossegue
+            // ignora (para print e input)
         }
         else if (atual->type == NODE_VARIAVEL || atual->type == NODE_NUMERO)
         {
@@ -1729,14 +1707,13 @@ char *gerarCodigoIntermediario(DAGnode *no)
                 arg = saved_prox;
             }
 
-            /* Segundo passo: emite a chamada de procedimento com o número de parâmetros */
+            /* emite a chamada de procedimento com o número de parâmetros */
             char inst[200];
             sprintf(inst, "call print, %d", num_params);
             emitir(inst);
         }
-        // ==========================================================
-        // FLUXO DE CONTROLE (IF, WHILE, FOR)
-        // ==========================================================
+
+        // IF, WHILE, FOR
         else if (atual->type == NODE_IF)
         {
             char *cond = gerarCodigoIntermediario(atual->esq);
@@ -1754,7 +1731,7 @@ char *gerarCodigoIntermediario(DAGnode *no)
             emitir(inst);
             free(cond);
 
-            gerarCodigoIntermediario(atual->dir); // Avalia o que tá dentro do IF
+            gerarCodigoIntermediario(atual->dir); // avalia o que ta dentro do IF
 
             sprintf(inst, "%s:", rotuloFim);
             emitir(inst);
@@ -1836,16 +1813,16 @@ char *gerarCodigoIntermediario(DAGnode *no)
             free(temp_inc);
         }
 
-        // Limpa a memória pra não vazar e salva o valor final deste nó
+        // libera a memória e salva o valor do no
         if (last_val)
             free(last_val);
         last_val = current_val;
 
-        // Pula pra a próxima instrução (if, while, etc.) sem abortar!
+        // pula pra a proxima instrucao (if, while, etc.) sem abortar!
         atual = atual->prox;
     }
 
-    // Só envia o valor pra cima quando a lista inteira terminar
+    // so envia o valor pra cima quando a lista inteira terminar
     return last_val;
 }
 
@@ -1890,6 +1867,8 @@ void LIST();
 void TUPLE_OR_GROUP();
 void ELEMENTS_OPT();
 void ELEMENTS_TAIL();
+
+
 // ==============================================================================
 // ANALISADOR SINTÁTICO RECURSIVO DESCENDENTE PREDITIVO
 // ==============================================================================
@@ -1974,7 +1953,7 @@ DAGnode *ASSIGN_OR_EXPR()
         strcpy(id_lexema, lookahead.lexema);
         consome(IDENTIFICADOR, NULL);
 
-        // Verifica se há acesso a vetor (ex: x[i])
+        // verifica se tem acesso a vetor (ex: x[i])
         DAGnode *index = INDEX_OPT();
         return ASSIGN_OR_EXPR_TAIL(id_lexema, index);
     }
@@ -2009,7 +1988,7 @@ DAGnode *ASSIGN_OR_EXPR_TAIL(char *ladoEsquerdo, DAGnode *index)
 
         if (index != NULL)
         {
-            // Atribuição Indexada: x[i] = y
+            // atribuicao indexada: x[i] = y
             DAGnode *noAtribIdx = criarNo(NODE_ATRIBUICAO_INDEXADA, ladoEsquerdo);
             noAtribIdx->esq = index;
             noAtribIdx->dir = valDir;
@@ -2017,7 +1996,7 @@ DAGnode *ASSIGN_OR_EXPR_TAIL(char *ladoEsquerdo, DAGnode *index)
         }
         else
         {
-            // Cópia Normal: x = y
+            // copia normal: x = y
             DAGnode *noAtrib = criarNo(NODE_ATRIBUICAO, ladoEsquerdo);
             noAtrib->dir = valDir;
             return noAtrib;
@@ -2025,17 +2004,17 @@ DAGnode *ASSIGN_OR_EXPR_TAIL(char *ladoEsquerdo, DAGnode *index)
     }
     else
     {
-        // Apenas expressão matemática
+        // apenas expressão matematica
         DAGnode *noEsq;
         if (index != NULL)
         {
-            // Leitura indexada: t1 = y[i]
+            // leitura indexada: t1 = y[i]
             noEsq = criarNo(NODE_INDEX_GET, ladoEsquerdo);
             noEsq->esq = index;
         }
         else
         {
-            // Variável simples: y
+            // variavel simples: y
             noEsq = criarNo(NODE_VARIAVEL, ladoEsquerdo);
         }
         return EXPRESSION_PRIME(noEsq);
@@ -2155,7 +2134,7 @@ DAGnode *COMMAND_STATEMENT()
         consome(DELIMITER, ")");
         return no_print;
     }
-    // Comandos ignorados na Geração de Código de 3-Endereços (não há funções)
+    // comandos ignorados na Geração de Código de 3-Endereços (não há funções)
     else if (lookahead.tipo == T_INPUT)
     {
         consome(T_INPUT, NULL);
@@ -2179,7 +2158,7 @@ DAGnode *COMMAND_STATEMENT()
         consome(T_RETURN, NULL);
         DAGnode *expr = EXPRESSION();
         if (expr)
-            free(expr); // Ignora a avaliação para evitar vazamento
+            free(expr); // ignora a avaliação
         return criarNo(NODE_IGNORAR, "return");
     }
     else if (lookahead.tipo == T_EXEC)
@@ -2350,7 +2329,7 @@ void ELEMENTS_OPT()
     {
         DAGnode *exp = EXPRESSION();
         if (exp)
-            free(exp); // Previne vazamentos de memória nas coisas ignoradas
+            free(exp); // previne vazamentos de memória nas coisas ignoradas
         ELEMENTS_TAIL();
     }
     // else EPSILON
@@ -2391,20 +2370,20 @@ int main(int argc, char **argv)
 
     const char *filename = argv[1];
 
-    // Carrega os lexemas do arquivo na array e suas linhas correspondentes no mapa
+    // carrega os lexemas do arquivo na array e suas linhas correspondentes no mapa
     totalLexemasGlob = lexemas(filename, lexemasArray, mapaLinhasGlobais);
 
     if (totalLexemasGlob >= 0)
     {
         printf("===== INICIANDO ANALISE LEXICA, SINTATICA E SEMANTICA =====\n");
 
-        // 1. INICIA O PARSER E A FILA SEMÂNTICA
-        // Aqui, a Grafo Acíclico Direcionado (DAG) será construída e armazenada na global 'raizPrograma'
-        // Ao mesmo tempo, a Fila Semântica validará os tipos linha por linha.
+        // 1. INICIA O PARSER E A FILA SEMANTICA
+        // aqui, o Grafo Acíclico Direcionado (DAG) sera construido e armazenao na global 'raizPrograma'
+        // ao mesmo tempo, a Fila Semantica vai validar os tipos linha por linha.
         analisadorSintatico();
 
-        // 2. VERIFICAÇÃO SEMÂNTICA FINAL
-        // Checa se alguma variável recebeu valor e nunca foi lida.
+        // 2. VERIFICAÇÃO SEMANTICA FINAL
+        // Checa se alguma variavel recebeu valor e nunca foi lida.
         if(possuiVarNaoUtilizada()){
             printf("\nSemantica apresentou falhas!!!\n");
             exit(1);
@@ -2416,7 +2395,7 @@ int main(int argc, char **argv)
 
         printTabelaSimbolos();
 
-        // 3. GERAÇÃO DO CÓDIGO INTERMEDIÁRIO 
+        // 3. GERACAO DO CÓDIGO INTERMEDIARIO 
         code_output = fopen("codigo_intermediario.txt", "w");
 
         if (code_output == NULL)
